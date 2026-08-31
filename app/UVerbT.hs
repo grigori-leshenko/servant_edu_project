@@ -1,8 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module UVerbT (UVerbT, runUVerbT, throwUVerb) where
+module UVerbT (UVerbT (..), runUVerbT, throwUVerb) where
 
 import Control.Monad.Except
 import Control.Monad.IO.Class

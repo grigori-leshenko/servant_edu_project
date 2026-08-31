@@ -12,6 +12,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -60,11 +61,13 @@ import Servant
   , err409
   , err500
   , hoistServer
+  , respond
   , serveWithContext
   , throwError
   , type (:<|>) (..)
   , type (:>)
   )
+import Servant.API.Status qualified
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.OpenApi (toOpenApi)
 import Servant.Server.Generic (AsServer)
@@ -177,26 +180,53 @@ catchRoutingExceprions baseApp req rspnd = do
 _throwApp :: AppError -> Handler addUser
 _throwApp = throwError . _toServerError
 
-mapAppError ::
-  ( IsMember (WithStatus 400 ErrorBody) xs
-  , IsMember (WithStatus 404 ErrorBody) xs
-  , IsMember (WithStatus 409 ErrorBody) xs
-  , Monad m
-  ) =>
-  AppError -> UVerbT xs m a
-mapAppError = \case
-  InvalidUserName n ->
-    throwUVerb $ WithStatus @400 (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
-  UserNotFound uid ->
-    throwUVerb $
-      WithStatus @404
-        (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
-  DuplicatedUser n ->
-    throwUVerb $
-      WithStatus @409 (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
+-- mapAppError ::
+--   Monad m =>
+--   AppError -> UVerbT xs m a
+-- mapAppError = \case
+--   InvalidUserName n ->
+--     throwUVerb' (Proxy @400) (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
+--   UserNotFound uid ->
+--     throwUVerb'
+--       (Proxy @404)
+--       (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
+--   DuplicatedUser n ->
+--     throwUVerb' (Proxy @409) (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
+
+-- TODO:
+
+-- mapAppError' ::
+--   ( IsMember (WithStatus 400 ErrorBody) xs
+--   , IsMember (WithStatus 404 ErrorBody) xs
+--   , IsMember (WithStatus 409 ErrorBody) xs
+--   , Monad m
+--   ) =>
+--   AppError -> ErrorBody
+-- mapAppError' = \case
+--   InvalidUserName n ->
+--     throwUVerb $ WithStatus @400 (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
+--   UserNotFound uid ->
+--     throwUVerb $
+--       WithStatus @404
+--         (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
+--   DuplicatedUser n ->
+--     throwUVerb $
+--       WithStatus @409 (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
 
 data ErrorBody = ErrorBody {error :: Text, message :: Text}
   deriving (Show, Generic, ToJSON, ToSchema)
+
+mapAppError :: AppError -> ErrorBody
+mapAppError = \case
+  InvalidUserName n -> (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
+  UserNotFound uid -> (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
+  DuplicatedUser n -> (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
+
+throwUVerb' ::
+  forall s xs m a.
+  (Monad m, Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
+  Proxy s -> ErrorBody -> UVerbT xs m a
+throwUVerb' (Proxy @status) e = UVerbT . ExceptT . fmap Left . respond $ WithStatus @status e
 
 data Routes mode = Routes
   { addUser ::
@@ -206,8 +236,8 @@ data Routes mode = Routes
           :> UVerb
                'POST
                '[JSON]
-               '[WithStatus 200 User, WithStatus 400 ErrorBody, WithStatus 404 ErrorBody, WithStatus 409 ErrorBody]
-  , list :: mode :- "users" :> UVerb 'GET '[JSON] '[WithStatus 200 [User], WithStatus 400 ErrorBody]
+               '[WithStatus 200 User, WithStatus 400 ErrorBody, WithStatus 408 ErrorBody]
+  , list :: mode :- "users" :> UVerb 'GET '[JSON] '[WithStatus 200 [User]]
   , get ::
       mode
         :- "users"
@@ -215,7 +245,7 @@ data Routes mode = Routes
           :> UVerb
                'GET
                '[JSON]
-               '[WithStatus 200 User, WithStatus 404 ErrorBody, WithStatus 400 ErrorBody, WithStatus 409 ErrorBody]
+               '[WithStatus 200 User, WithStatus 404 ErrorBody]
   }
   deriving (Generic)
 
@@ -232,7 +262,7 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
         addUser (NewUser n) = runUVerbT $ do
           let vResult = validateName n
           case vResult of
-            Left r -> mapAppError r
+            Left r -> throwUVerb' (Proxy @400) $ mapAppError r
             Right _ -> do
               users <- liftIO $ readIORef ref
               let newId = Prelude.length users + 1
@@ -246,7 +276,7 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
           users <- liftIO $ readIORef ref
           case lookup lookup_uid [(u.uid, u) | u <- users] of
             Just u -> pure $ WithStatus @200 u
-            Nothing -> mapAppError $ UserNotFound lookup_uid
+            Nothing -> throwUVerb' (Proxy @404) $ mapAppError $ UserNotFound lookup_uid
         validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
         validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
         validateName _ = Right ()
