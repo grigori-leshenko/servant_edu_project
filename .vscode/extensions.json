@@ -1,7 +1,8 @@
 {
     "recommendations": [
       "haskell.haskell",
-      "usernamehw.errorlens"
+      "usernamehw.errorlens",
+      "eamodio.gitlens"
       // "jcanero.hoogle-vscode"
     ]
   }
