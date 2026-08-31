@@ -1,0 +1,17 @@
+{
+  "haskell.formattingProvider": "fourmolu",
+  "[haskell]": {
+    "editor.formatOnSave": true
+  },
+
+  // --- Настройки Hole-Driven Development & Диагностики ---
+  "errorLens.enabled": true,
+  "errorLens.fontStyleItalic": true,
+  "errorLens.delay": 100,
+  // --- Визуальные улучшения Haskell ---
+  "editor.fontLigatures": true,
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  // --- Линтинг ---
+  "haskell.plugin.hlint.globalOn": true
+}

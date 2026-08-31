@@ -1,0 +1,7 @@
+
+sudo lsof -i :8888 - найти кто занял порт
+sudo ss -ltnp | grep 8888
+kill -9 124
+sudo kill -9 $(sudo lsof -t -i:8888)
+
+cabal-gild *.cabal

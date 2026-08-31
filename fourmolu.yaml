@@ -1,0 +1,25 @@
+# --- Основной стиль и выравнивание ---
+indentation: 2
+column-limit: 100
+unicode: never
+
+# --- Работа с импортами и экспортами (SOTA чистые диффы) ---
+import-export-style: leading
+single-constraint-parens: never
+
+# --- Форматирование списков, записей и скобок ---
+comma-style: leading
+record-brace-space: true
+
+# --- Синтаксис Haskell 2010 / Modern ---
+function-arrows: trailing
+let-style: auto
+in-style: right-align
+
+# --- Расширения языков и прагмы ---
+respectful: true
+haddocks-style: leading
+
+indent-wheres: true
+
+in-style: right-align
