@@ -2,7 +2,8 @@
     "recommendations": [
       "haskell.haskell",
       "usernamehw.errorlens",
-      "eamodio.gitlens"
+      "eamodio.gitlens",
+      "aaron-bond.better-comments"
       // "jcanero.hoogle-vscode"
     ]
   }
