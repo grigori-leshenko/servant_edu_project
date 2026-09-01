@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE EmptyCase #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -37,8 +38,8 @@ import Data.OpenApi
 import Data.Text (Text, pack)
 import Data.Text qualified as Text
 import Data.Text.IO (hPutStrLn)
+import Errors
 import GHC.Generics (Generic)
-import GHC.TypeLits (Nat)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
 import Network.Wai (Middleware, responseLBS)
 import Network.Wai.Handler.Warp (run)
@@ -47,10 +48,9 @@ import Servant
   , Capture
   , Context (EmptyContext, (:.))
   , ErrorFormatters (urlParseErrorFormatter)
-  , FromHttpApiData (..)
+  , FromHttpApiData
   , GenericMode (type (:-))
   , Handler (..)
-  , IsMember
   , JSON
   , NamedRoutes
   , Proxy (Proxy)
@@ -61,12 +61,11 @@ import Servant
   , err400
   , err500
   , hoistServer
-  , respond
   , serveWithContext
   , type (:<|>) (..)
   , type (:>)
   )
-import Servant.API.Status qualified
+import Servant.API (FromHttpApiData (parseUrlPiece))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.OpenApi (toOpenApi)
 import Servant.Server.Generic (AsServer)
@@ -75,29 +74,28 @@ import Servant.Swagger.UI
   , swaggerSchemaUIServer
   )
 import System.IO (stderr)
-import Text.Read (readMaybe)
+import Text.Read
 import UVerbT
+import Users (User (User, uid), UserId (UserId))
 
-newtype UserId = UserId Int
-  deriving stock (Eq, Show, Generic)
+newtype WebUserId = WebUserId {unWeb :: Int}
+  deriving (Show, Generic)
   deriving newtype (ToJSON, ToSchema, ToParamSchema)
 
-instance FromHttpApiData UserId where
-  parseUrlPiece :: Text -> Either Text UserId
+instance FromHttpApiData WebUserId where
+  parseUrlPiece :: Text -> Either Text WebUserId
   parseUrlPiece txt = case readMaybe $ Text.unpack txt of
-    Just i@((> 0) -> True) -> Right $ UserId i
+    Just i@((> 0) -> True) -> Right $ WebUserId i
     Just i -> Left $ "UserId should be a positive decimal number, not " <> (pack . Prelude.show $ i)
     Nothing -> Left $ "UserId should be a positive decimal number, not " <> txt
 
-data User = User {uid :: UserId, name :: String} deriving (Show, Generic, ToJSON, ToSchema)
-
 data NewUser = NewUser {name :: String} deriving (Show, Generic, FromJSON, ToSchema)
 
-data AppError (status :: Nat) where
-  UserNotFound :: UserId -> AppError 404
-  InvalidUserName :: String -> AppError 400
-  DuplicatedUser :: String -> AppError 409
-deriving instance Show (AppError status)
+data WebUser = WebUser {uid :: WebUserId, name :: String}
+  deriving (Show, Generic, ToSchema, ToJSON)
+
+toWebUser :: User -> WebUser
+toWebUser (User (UserId uid) name) = WebUser (WebUserId uid) name
 
 customFormatters :: ErrorFormatters
 customFormatters =
@@ -151,21 +149,6 @@ catchRoutingExceprions baseApp req rspnd = do
                 ]
           )
 
-data ErrorBody = ErrorBody {error :: Text, message :: Text}
-  deriving (Show, Generic, ToJSON, ToSchema)
-
-mapAppError :: AppError status -> ErrorBody
-mapAppError = \case
-  InvalidUserName n -> (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
-  UserNotFound uid -> (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
-  DuplicatedUser n -> (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
-
-throwUVerb' ::
-  forall s xs m a.
-  (Monad m, Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
-  AppError s -> UVerbT xs m a
-throwUVerb' e = UVerbT . ExceptT . fmap Left . respond $ WithStatus @s $ mapAppError e
-
 data Routes mode = Routes
   { addUser ::
       mode
@@ -174,16 +157,16 @@ data Routes mode = Routes
           :> UVerb
                'POST
                '[JSON]
-               '[WithStatus 200 User, WithStatus 400 ErrorBody, WithStatus 408 ErrorBody]
-  , list :: mode :- "users" :> UVerb 'GET '[JSON] '[WithStatus 200 [User]]
+               '[WithStatus 200 WebUser, WithStatus 400 ErrorBody, WithStatus 408 ErrorBody]
+  , list :: mode :- "users" :> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser]]
   , get ::
       mode
         :- "users"
-          :> Capture "userId" UserId
+          :> Capture "userId" WebUserId
           :> UVerb
                'GET
                '[JSON]
-               '[WithStatus 200 User, WithStatus 404 ErrorBody]
+               '[WithStatus 200 WebUser, WithStatus 404 ErrorBody]
   , sanityCheck ::
       mode :- "sanityCheck" :> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
@@ -203,23 +186,23 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
         addUser (NewUser n) = runUVerbT $ do
           let vResult = validateName n
           case vResult of
-            Left r -> throwUVerb' r
+            Left r -> throwUVerb r
             Right _ -> do
               users <- liftIO $ readIORef ref
               let newId = Prelude.length users + 1
                   u = User (UserId newId) n
               liftIO $ writeIORef ref $ u : users
-              pure $ WithStatus @200 u
+              pure $ WithStatus @200 $ toWebUser u
         list = runUVerbT $ do
           users <- liftIO $ readIORef ref
-          pure $ WithStatus @200 users
-        get_ lookup_uid = runUVerbT $ do
+          pure $ WithStatus @200 $ toWebUser <$> users
+        get_ (WebUserId lookup_uid) = runUVerbT $ do
           users <- liftIO $ readIORef ref
-          case lookup lookup_uid [(u.uid, u) | u <- users] of
-            Just u -> pure $ WithStatus @200 u
-            Nothing -> throwUVerb' $ UserNotFound lookup_uid
+          case lookup (UserId lookup_uid) [(u.uid, u) | u <- users] of
+            Just u -> pure $ WithStatus @200 $ toWebUser u
+            Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
         sanityCheck = runUVerbT $ do
-          _ <- throwUVerb' $ UserNotFound $ UserId 0
+          _ <- throwUVerb $ UserNotFound $ UserId 0
           pure $ WithStatus @200 ()
         validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
         validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
