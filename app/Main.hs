@@ -57,13 +57,10 @@ import Servant
   , ServerError (errBody)
   , defaultErrorFormatters
   , err400
-  , err404
-  , err409
   , err500
   , hoistServer
   , respond
   , serveWithContext
-  , throwError
   , type (:<|>) (..)
   , type (:>)
   )
@@ -110,35 +107,6 @@ customFormatters =
           }
     }
 
-_toServerError :: AppError -> ServerError
-_toServerError (UserNotFound uid) =
-  err404
-    { errBody =
-        encode $
-          object
-            [ "error" .= ("user_not_found" :: String)
-            , "message" .= ("User with id " <> Prelude.show uid <> " not found")
-            ]
-    }
-_toServerError (InvalidUserName n) =
-  err400
-    { errBody =
-        encode $
-          object
-            [ "error" .= ("invalid_name" :: String)
-            , "message" .= ("Name \"" <> n <> "\" is not valid")
-            ]
-    }
-_toServerError (DuplicatedUser n) =
-  err409
-    { errBody =
-        encode $
-          object
-            [ "error" .= ("duplicated_user" :: String)
-            , "message" .= ("Name \"" <> n <> "\" already exists")
-            ]
-    }
-
 -- catch handler exceptions
 catchInternalServerError :: Handler a -> Handler a
 catchInternalServerError (Handler action) = Handler $ ExceptT $ do
@@ -176,42 +144,6 @@ catchRoutingExceprions baseApp req rspnd = do
                 , "message" .= ("Internal server error" :: String)
                 ]
           )
-
-_throwApp :: AppError -> Handler addUser
-_throwApp = throwError . _toServerError
-
--- mapAppError ::
---   Monad m =>
---   AppError -> UVerbT xs m a
--- mapAppError = \case
---   InvalidUserName n ->
---     throwUVerb' (Proxy @400) (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
---   UserNotFound uid ->
---     throwUVerb'
---       (Proxy @404)
---       (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
---   DuplicatedUser n ->
---     throwUVerb' (Proxy @409) (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
-
--- TODO:
-
--- mapAppError' ::
---   ( IsMember (WithStatus 400 ErrorBody) xs
---   , IsMember (WithStatus 404 ErrorBody) xs
---   , IsMember (WithStatus 409 ErrorBody) xs
---   , Monad m
---   ) =>
---   AppError -> ErrorBody
--- mapAppError' = \case
---   InvalidUserName n ->
---     throwUVerb $ WithStatus @400 (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
---   UserNotFound uid ->
---     throwUVerb $
---       WithStatus @404
---         (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
---   DuplicatedUser n ->
---     throwUVerb $
---       WithStatus @409 (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
 
 data ErrorBody = ErrorBody {error :: Text, message :: Text}
   deriving (Show, Generic, ToJSON, ToSchema)
