@@ -12,6 +12,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
@@ -37,6 +38,7 @@ import Data.Text (Text, pack)
 import Data.Text qualified as Text
 import Data.Text.IO (hPutStrLn)
 import GHC.Generics (Generic)
+import GHC.TypeLits (Nat)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
 import Network.Wai (Middleware, responseLBS)
 import Network.Wai.Handler.Warp (run)
@@ -91,7 +93,11 @@ data User = User {uid :: UserId, name :: String} deriving (Show, Generic, ToJSON
 
 data NewUser = NewUser {name :: String} deriving (Show, Generic, FromJSON, ToSchema)
 
-data AppError = UserNotFound UserId | InvalidUserName String | DuplicatedUser String deriving (Show)
+data AppError (status :: Nat) where
+  UserNotFound :: UserId -> AppError 404
+  InvalidUserName :: String -> AppError 400
+  DuplicatedUser :: String -> AppError 409
+deriving instance Show (AppError status)
 
 customFormatters :: ErrorFormatters
 customFormatters =
@@ -148,7 +154,7 @@ catchRoutingExceprions baseApp req rspnd = do
 data ErrorBody = ErrorBody {error :: Text, message :: Text}
   deriving (Show, Generic, ToJSON, ToSchema)
 
-mapAppError :: AppError -> ErrorBody
+mapAppError :: AppError status -> ErrorBody
 mapAppError = \case
   InvalidUserName n -> (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
   UserNotFound uid -> (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
@@ -157,8 +163,8 @@ mapAppError = \case
 throwUVerb' ::
   forall s xs m a.
   (Monad m, Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
-  Proxy s -> ErrorBody -> UVerbT xs m a
-throwUVerb' (Proxy @status) e = UVerbT . ExceptT . fmap Left . respond $ WithStatus @status e
+  AppError s -> UVerbT xs m a
+throwUVerb' e = UVerbT . ExceptT . fmap Left . respond $ WithStatus @s $ mapAppError e
 
 data Routes mode = Routes
   { addUser ::
@@ -178,6 +184,8 @@ data Routes mode = Routes
                'GET
                '[JSON]
                '[WithStatus 200 User, WithStatus 404 ErrorBody]
+  , sanityCheck ::
+      mode :- "sanityCheck" :> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
   deriving (Generic)
 
@@ -189,12 +197,13 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
         { addUser = addUser
         , list = list
         , get = get_
+        , sanityCheck = sanityCheck
         }
       where
         addUser (NewUser n) = runUVerbT $ do
           let vResult = validateName n
           case vResult of
-            Left r -> throwUVerb' (Proxy @400) $ mapAppError r
+            Left r -> throwUVerb' r
             Right _ -> do
               users <- liftIO $ readIORef ref
               let newId = Prelude.length users + 1
@@ -208,7 +217,10 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
           users <- liftIO $ readIORef ref
           case lookup lookup_uid [(u.uid, u) | u <- users] of
             Just u -> pure $ WithStatus @200 u
-            Nothing -> throwUVerb' (Proxy @404) $ mapAppError $ UserNotFound lookup_uid
+            Nothing -> throwUVerb' $ UserNotFound lookup_uid
+        sanityCheck = runUVerbT $ do
+          _ <- throwUVerb' $ UserNotFound $ UserId 0
+          pure $ WithStatus @200 ()
         validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
         validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
         validateName _ = Right ()
