@@ -24,8 +24,8 @@ module Main (main) where
 
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Except (ExceptT (..), MonadError, runExceptT)
+import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, encode, object, (.=))
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.OpenApi
@@ -36,8 +36,10 @@ import Data.OpenApi
   , ToSchema
   )
 import Data.Text (Text, pack)
+import Data.Text qualified as T
 import Data.Text qualified as Text
-import Data.Text.IO (hPutStrLn)
+import Data.Text.IO qualified as TIO (hPutStrLn, putStrLn)
+import Data.Time (getCurrentTime)
 import Errors
 import GHC.Generics (Generic)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
@@ -68,7 +70,7 @@ import Servant
 import Servant.API (FromHttpApiData (parseUrlPiece))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.OpenApi (toOpenApi)
-import Servant.Server.Generic (AsServer)
+import Servant.Server.Generic (AsServer, AsServerT)
 import Servant.Swagger.UI
   ( SwaggerSchemaUI
   , swaggerSchemaUIServer
@@ -118,7 +120,7 @@ catchInternalServerError (Handler action) = Handler $ ExceptT $ do
   case result of
     Right r -> pure r
     Left (e :: SomeException) -> do
-      liftIO $ hPutStrLn stderr $ "Unhandled exception: " <> pack (displayException e)
+      liftIO $ TIO.hPutStrLn stderr $ "Unhandled exception: " <> pack (displayException e)
       pure $
         Left
           err500
@@ -137,7 +139,7 @@ catchRoutingExceprions baseApp req rspnd = do
   case result of
     Right receipt -> pure receipt
     Left (e :: SomeException) -> do
-      liftIO $ hPutStrLn stderr $ "Unhandled exception: " <> pack (displayException e)
+      liftIO $ TIO.hPutStrLn stderr $ "Unhandled exception: " <> pack (displayException e)
       rspnd $
         responseLBS
           internalServerError500
@@ -172,10 +174,14 @@ data Routes mode = Routes
   }
   deriving (Generic)
 
-businesServer :: IORef [User] -> Routes AsServer
-businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServerError (rawBusinessServer ref_)
+businesServer :: AppConfig -> Routes (AsServer)
+-- businesServer = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServerError (rawBusinessServer)
+businesServer cfg = hoistServer (Proxy @(NamedRoutes Routes)) (catchInternalServerError . nt) (rawBusinessServer)
   where
-    rawBusinessServer ref =
+    nt :: AppM a -> Handler a
+    nt action = runReaderT (action.runAppM) cfg
+    rawBusinessServer :: Routes (AsServerT AppM)
+    rawBusinessServer =
       Routes
         { addUser = addUser
         , list = list
@@ -183,49 +189,80 @@ businesServer ref_ = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServ
         , sanityCheck = sanityCheck
         }
       where
-        addUser (NewUser n) = runUVerbT $ do
-          let vResult = validateName n
-          case vResult of
-            Left r -> throwUVerb r
-            Right _ -> do
-              users <- liftIO $ readIORef ref
-              let newId = Prelude.length users + 1
-                  u = User (UserId newId) n
-              liftIO $ writeIORef ref $ u : users
-              pure $ WithStatus @200 $ toWebUser u
-        list = runUVerbT $ do
-          users <- liftIO $ readIORef ref
-          pure $ WithStatus @200 $ toWebUser <$> users
-        get_ (WebUserId lookup_uid) = runUVerbT $ do
-          users <- liftIO $ readIORef ref
-          case lookup (UserId lookup_uid) [(u.uid, u) | u <- users] of
-            Just u -> pure $ WithStatus @200 $ toWebUser u
-            Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
-        sanityCheck = runUVerbT $ do
-          _ <- throwUVerb $ UserNotFound $ UserId 0
-          pure $ WithStatus @200 ()
+        addUser (NewUser n) = do
+          logMsg "addUser"
+          runUVerbT $ do
+            let vResult = validateName n
+            case vResult of
+              Left r -> throwUVerb r
+              Right _ -> do
+                config <- asks id
+                let ref = config.cfgUsersRef
+                users <- liftIO $ readIORef ref
+                let newId = Prelude.length users + 1
+                    u = User (UserId newId) n
+                liftIO $ writeIORef ref $ u : users
+                pure $ WithStatus @200 $ toWebUser u
+
+        list = do
+          logMsg "list"
+          runUVerbT $ do
+            config <- asks id
+            let ref = config.cfgUsersRef
+            users <- liftIO $ readIORef ref
+            pure $ WithStatus @200 $ toWebUser <$> users
+        get_ (WebUserId lookup_uid) = do
+          logMsg "getUser"
+          runUVerbT $ do
+            config <- asks id
+            let ref = config.cfgUsersRef
+            users <- liftIO $ readIORef ref
+            case lookup (UserId lookup_uid) [(u.uid, u) | u <- users] of
+              Just u -> pure $ WithStatus @200 $ toWebUser u
+              Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
+        sanityCheck = do
+          logMsg "sanityCheck"
+          runUVerbT $ do
+            _ <- throwUVerb $ UserNotFound $ UserId 0
+            pure $ WithStatus @200 ()
         validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
         validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
         validateName _ = Right ()
 
 type FullAPI = SwaggerSchemaUI "swagger-ui" "swagger.json" :<|> NamedRoutes Routes
+data AppConfig = AppConfig
+  { cfgUsersRef :: IORef [User]
+  , cfgLogPrefix :: Text
+  }
+
+newtype AppM a = AppM {runAppM :: ReaderT AppConfig Handler a}
+  deriving newtype
+    (Functor, Applicative, Monad, MonadIO, MonadReader AppConfig, MonadError ServerError)
+
+logMsg :: Text -> AppM ()
+logMsg msg = do
+  config <- asks id
+  let prefix = config.cfgLogPrefix
+  now <- liftIO getCurrentTime
+  liftIO $ TIO.putStrLn $ prefix <> " [" <> (T.pack $ show now) <> "] " <> msg
 
 openApiDoc :: OpenApi
 openApiDoc =
   toOpenApi (Proxy @(NamedRoutes Routes))
     & info . title .~ "User.API"
 
-appServer :: IORef [User] -> Servant.Server FullAPI
-appServer ref = swaggerSchemaUIServer openApiDoc :<|> businesServer ref
+appServer :: AppConfig -> Servant.Server FullAPI
+appServer cfg = swaggerSchemaUIServer openApiDoc :<|> businesServer cfg
 
 customContext :: Context '[ErrorFormatters]
 customContext = customFormatters :. EmptyContext
 
-app :: IORef [User] -> Application
-app ref = serveWithContext (Proxy @FullAPI) customContext $ appServer ref
+app :: AppConfig -> Application
+app cfg = serveWithContext (Proxy @FullAPI) customContext $ appServer cfg
 
 main :: IO ()
 main = do
   putStrLn "start"
   ref <- newIORef []
-  run 8888 $ catchRoutingExceprions $ app ref
+  let cfg = AppConfig ref "[dev]"
+  run 8888 $ catchRoutingExceprions $ app cfg

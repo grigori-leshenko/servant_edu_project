@@ -19,7 +19,7 @@ import Servant (HasStatus, IsMember, Union, WithStatus (WithStatus), respond)
 import Servant.API.Status qualified
 
 newtype UVerbT xs m a = UVerbT {unUVerbT :: ExceptT (Union xs) m a}
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadTrans)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadReader r)
 
 instance MonadError e m => MonadError e (UVerbT xs m) where
   throwError = lift . throwError

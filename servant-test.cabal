@@ -58,6 +58,7 @@ executable servant-test
   -- other-extensions:
   -- Other library packages from which modules are imported.
   build-depends:
+    time,
     sop-core,
     http-types,
     wai,
