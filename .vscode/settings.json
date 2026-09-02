@@ -13,5 +13,6 @@
   "editor.tabSize": 2,
   "editor.insertSpaces": true,
   // --- Линтинг ---
-  "haskell.plugin.hlint.globalOn": true
+  "haskell.plugin.hlint.globalOn": true,
+  "todo-tree.regex.regex": "(//|#|--|<!--|/\\*)\\s*($TAGS)"
 }

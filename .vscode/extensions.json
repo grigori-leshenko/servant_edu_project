@@ -3,7 +3,7 @@
       "haskell.haskell",
       "usernamehw.errorlens",
       "eamodio.gitlens",
-      "aaron-bond.better-comments"
-      // "jcanero.hoogle-vscode"
+      "aaron-bond.better-comments",
+      "gruntfuggly.todo-tree"
     ]
   }
