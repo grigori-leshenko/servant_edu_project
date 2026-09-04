@@ -41,9 +41,10 @@ data ErrorBody = ErrorBody {error :: Text, message :: Text}
 
 mapAppError :: AppError status -> ErrorBody
 mapAppError = \case
-  InvalidUserName n -> (ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid")
-  UserNotFound uid -> (ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found")
-  DuplicatedUser n -> (ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists")
+  InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
+  UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
+  DuplicatedUser n -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
+  Denied -> ErrorBody "access_deniad" "access deniad"
 
 throwUVerb ::
   forall s xs m a.

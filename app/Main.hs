@@ -9,6 +9,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -24,6 +26,7 @@ module Main (main) where
 
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
+import Control.Monad
 import Control.Monad.Except (ExceptT (..), MonadError, runExceptT)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, encode, object, (.=))
@@ -45,14 +48,19 @@ import GHC.Generics (Generic)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
 import Network.Wai (Middleware, responseLBS)
 import Network.Wai.Handler.Warp (run)
+import Orphans ()
 import Servant
   ( Application
+  , BasicAuth
+  , BasicAuthCheck (BasicAuthCheck)
+  , BasicAuthResult (Authorized, Unauthorized)
   , Capture
   , Context (EmptyContext, (:.))
   , ErrorFormatters (urlParseErrorFormatter)
   , FromHttpApiData
   , GenericMode (type (:-))
   , Handler (..)
+  , HasServer (hoistServerWithContext)
   , JSON
   , NamedRoutes
   , Proxy (Proxy)
@@ -62,12 +70,11 @@ import Servant
   , defaultErrorFormatters
   , err400
   , err500
-  , hoistServer
   , serveWithContext
   , type (:<|>) (..)
   , type (:>)
   )
-import Servant.API (FromHttpApiData (parseUrlPiece))
+import Servant.API (BasicAuthData (BasicAuthData), FromHttpApiData (parseUrlPiece))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.OpenApi (toOpenApi)
 import Servant.Server.Generic (AsServer, AsServerT)
@@ -79,6 +86,16 @@ import System.IO (stderr)
 import Text.Read
 import UVerbT
 import Users (User (User, uid), UserId (UserId))
+
+data AuthedUser = AU {auName :: String, auIsAdmin :: Bool} deriving (Show, Generic, ToJSON)
+
+authCheck :: BasicAuthCheck AuthedUser
+authCheck = BasicAuthCheck auCheck
+  where
+    auCheck :: BasicAuthData -> IO (BasicAuthResult AuthedUser)
+    auCheck (BasicAuthData "admin" "1122") = pure $ Authorized $ AU "admin" True
+    auCheck (BasicAuthData "viewer" "ro") = pure $ Authorized $ AU "viever" False
+    auCheck _ = pure Unauthorized
 
 newtype WebUserId = WebUserId {unWeb :: Int}
   deriving (Show, Generic)
@@ -156,15 +173,21 @@ data Routes mode = Routes
       mode
         :- "users"
           :> ReqBody '[JSON] NewUser
+          :> BasicAuth "add user" AuthedUser
           :> UVerb
                'POST
                '[JSON]
-               '[WithStatus 200 WebUser, WithStatus 400 ErrorBody, WithStatus 408 ErrorBody]
+               '[ WithStatus 200 WebUser
+                , WithStatus 400 ErrorBody
+                , WithStatus 409 ErrorBody
+                , WithStatus 403 ErrorBody
+                ]
   , list :: mode :- "users" :> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser]]
   , get ::
       mode
         :- "users"
           :> Capture "userId" WebUserId
+          :> BasicAuth "get user" AuthedUser
           :> UVerb
                'GET
                '[JSON]
@@ -176,7 +199,12 @@ data Routes mode = Routes
 
 businesServer :: AppConfig -> Routes (AsServer)
 -- businesServer = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServerError (rawBusinessServer)
-businesServer cfg = hoistServer (Proxy @(NamedRoutes Routes)) (catchInternalServerError . nt) (rawBusinessServer)
+businesServer cfg =
+  hoistServerWithContext
+    (Proxy @(NamedRoutes Routes))
+    (Proxy :: Proxy '[ErrorFormatters, BasicAuthCheck AuthedUser])
+    (catchInternalServerError . nt)
+    (rawBusinessServer)
   where
     nt :: AppM a -> Handler a
     nt action = runReaderT (action.runAppM) cfg
@@ -189,9 +217,11 @@ businesServer cfg = hoistServer (Proxy @(NamedRoutes Routes)) (catchInternalServ
         , sanityCheck = sanityCheck
         }
       where
-        addUser (NewUser n) = do
+        addUser (NewUser n) au = do
           logMsg "addUser"
           runUVerbT $ do
+            unless au.auIsAdmin $ do
+              throwUVerb $ Denied
             let vResult = validateName n
             case vResult of
               Left r -> throwUVerb r
@@ -211,7 +241,7 @@ businesServer cfg = hoistServer (Proxy @(NamedRoutes Routes)) (catchInternalServ
             let ref = config.cfgUsersRef
             users <- liftIO $ readIORef ref
             pure $ WithStatus @200 $ toWebUser <$> users
-        get_ (WebUserId lookup_uid) = do
+        get_ (WebUserId lookup_uid) _au = do
           logMsg "getUser"
           runUVerbT $ do
             config <- asks id
@@ -254,8 +284,8 @@ openApiDoc =
 appServer :: AppConfig -> Servant.Server FullAPI
 appServer cfg = swaggerSchemaUIServer openApiDoc :<|> businesServer cfg
 
-customContext :: Context '[ErrorFormatters]
-customContext = customFormatters :. EmptyContext
+customContext :: Context '[ErrorFormatters, BasicAuthCheck AuthedUser]
+customContext = customFormatters :. authCheck :. EmptyContext
 
 app :: AppConfig -> Application
 app cfg = serveWithContext (Proxy @FullAPI) customContext $ appServer cfg

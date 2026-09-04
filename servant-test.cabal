@@ -54,6 +54,7 @@ executable servant-test
     UVerbT
     Errors
     Users
+    Orphans
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- Other library packages from which modules are imported.

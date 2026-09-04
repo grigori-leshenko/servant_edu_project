@@ -10,4 +10,5 @@ data AppError (status :: Nat) where
   UserNotFound :: UserId -> AppError 404
   InvalidUserName :: String -> AppError 400
   DuplicatedUser :: String -> AppError 409
+  Denied :: AppError 403
 deriving instance Show (AppError status)
