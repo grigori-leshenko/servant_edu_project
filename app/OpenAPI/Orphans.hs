@@ -4,7 +4,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Orphans () where
+module OpenAPI.Orphans () where
 
 import Control.Lens ((&), (<>~))
 import Data.OpenApi

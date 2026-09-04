@@ -48,7 +48,7 @@ import GHC.Generics (Generic)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
 import Network.Wai (Middleware, responseLBS)
 import Network.Wai.Handler.Warp (run)
-import Orphans ()
+import OpenAPI.Orphans ()
 import Servant
   ( Application
   , BasicAuth
