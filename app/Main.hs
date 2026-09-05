@@ -26,7 +26,6 @@ module Main (main) where
 
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
-import Control.Monad
 import Control.Monad.Except (ExceptT (..), MonadError, runExceptT)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, encode, object, (.=))
@@ -51,7 +50,6 @@ import Network.Wai.Handler.Warp (run)
 import OpenAPI.Orphans ()
 import Servant
   ( Application
-  , BasicAuth
   , BasicAuthCheck (BasicAuthCheck)
   , BasicAuthResult (Authorized, Unauthorized)
   , Capture
@@ -74,8 +72,9 @@ import Servant
   , type (:<|>) (..)
   , type (:>)
   )
-import Servant.API (BasicAuthData (BasicAuthData), FromHttpApiData (parseUrlPiece))
+import Servant.API (FromHttpApiData (parseUrlPiece))
 import Servant.API.UVerb (UVerb, WithStatus (..))
+import Servant.Auth.Server
 import Servant.OpenApi (toOpenApi)
 import Servant.Server.Generic (AsServer, AsServerT)
 import Servant.Swagger.UI
@@ -87,10 +86,11 @@ import Text.Read
 import UVerbT
 import Users (User (User, uid), UserId (UserId))
 
-data AuthedUser = AU {auName :: String, auIsAdmin :: Bool} deriving (Show, Generic, ToJSON)
+data AuthedUser = AU {auName :: String, auIsAdmin :: Bool}
+  deriving (Show, Generic, ToJSON, FromJSON, FromJWT, ToJWT)
 
-authCheck :: BasicAuthCheck AuthedUser
-authCheck = BasicAuthCheck auCheck
+_authCheck :: BasicAuthCheck AuthedUser
+_authCheck = BasicAuthCheck auCheck
   where
     auCheck :: BasicAuthData -> IO (BasicAuthResult AuthedUser)
     auCheck (BasicAuthData "admin" "1122") = pure $ Authorized $ AU "admin" True
@@ -173,7 +173,7 @@ data Routes mode = Routes
       mode
         :- "users"
           :> ReqBody '[JSON] NewUser
-          :> BasicAuth "add user" AuthedUser
+          -- :> BasicAuth "add user" AuthedUser
           :> UVerb
                'POST
                '[JSON]
@@ -186,12 +186,17 @@ data Routes mode = Routes
   , get ::
       mode
         :- "users"
-          :> Capture "userId" WebUserId
-          :> BasicAuth "get user" AuthedUser
+          :> Capture
+               "userId"
+               WebUserId
+          -- :> BasicAuth "get user" AuthedUser
+          :> Auth
+               '[JWT]
+               AuthedUser
           :> UVerb
                'GET
                '[JSON]
-               '[WithStatus 200 WebUser, WithStatus 404 ErrorBody]
+               '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
   , sanityCheck ::
       mode :- "sanityCheck" :> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
@@ -202,7 +207,7 @@ businesServer :: AppConfig -> Routes (AsServer)
 businesServer cfg =
   hoistServerWithContext
     (Proxy @(NamedRoutes Routes))
-    (Proxy :: Proxy '[ErrorFormatters, BasicAuthCheck AuthedUser])
+    (Proxy :: Proxy '[ErrorFormatters, JWTSettings, CookieSettings])
     (catchInternalServerError . nt)
     (rawBusinessServer)
   where
@@ -217,11 +222,11 @@ businesServer cfg =
         , sanityCheck = sanityCheck
         }
       where
-        addUser (NewUser n) au = do
+        addUser (NewUser n) = do
           logMsg "addUser"
           runUVerbT $ do
-            unless au.auIsAdmin $ do
-              throwUVerb $ Denied
+            -- unless au.auIsAdmin $ do
+            --   throwUVerb $ Denied
             let vResult = validateName n
             case vResult of
               Left r -> throwUVerb r
@@ -241,15 +246,18 @@ businesServer cfg =
             let ref = config.cfgUsersRef
             users <- liftIO $ readIORef ref
             pure $ WithStatus @200 $ toWebUser <$> users
-        get_ (WebUserId lookup_uid) _au = do
+        get_ (WebUserId lookup_uid) ar = do
           logMsg "getUser"
           runUVerbT $ do
-            config <- asks id
-            let ref = config.cfgUsersRef
-            users <- liftIO $ readIORef ref
-            case lookup (UserId lookup_uid) [(u.uid, u) | u <- users] of
-              Just u -> pure $ WithStatus @200 $ toWebUser u
-              Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
+            case ar of
+              Authenticated _au -> do
+                config <- asks id
+                let ref = config.cfgUsersRef
+                users <- liftIO $ readIORef ref
+                case lookup (UserId lookup_uid) [(u.uid, u) | u <- users] of
+                  Just u -> pure $ WithStatus @200 $ toWebUser u
+                  Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
+              _ -> throwUVerb $ Denied
         sanityCheck = do
           logMsg "sanityCheck"
           runUVerbT $ do
@@ -263,6 +271,8 @@ type FullAPI = SwaggerSchemaUI "swagger-ui" "swagger.json" :<|> NamedRoutes Rout
 data AppConfig = AppConfig
   { cfgUsersRef :: IORef [User]
   , cfgLogPrefix :: Text
+  , cfgJwtSettings :: JWTSettings
+  , cfgCookieSettings :: CookieSettings
   }
 
 newtype AppM a = AppM {runAppM :: ReaderT AppConfig Handler a}
@@ -284,15 +294,17 @@ openApiDoc =
 appServer :: AppConfig -> Servant.Server FullAPI
 appServer cfg = swaggerSchemaUIServer openApiDoc :<|> businesServer cfg
 
-customContext :: Context '[ErrorFormatters, BasicAuthCheck AuthedUser]
-customContext = customFormatters :. authCheck :. EmptyContext
+customContext :: AppConfig -> Context '[ErrorFormatters, CookieSettings, JWTSettings]
+customContext cfg = customFormatters :. cfg.cfgCookieSettings :. cfg.cfgJwtSettings :. EmptyContext
 
 app :: AppConfig -> Application
-app cfg = serveWithContext (Proxy @FullAPI) customContext $ appServer cfg
+app cfg = serveWithContext (Proxy @FullAPI) (customContext cfg) $ appServer cfg
 
 main :: IO ()
 main = do
   putStrLn "start"
   ref <- newIORef []
-  let cfg = AppConfig ref "[dev]"
+  jwk <- generateKey
+  putStrLn $ show jwk
+  let cfg = AppConfig ref "[dev]" (defaultJWTSettings jwk) defaultCookieSettings
   run 8888 $ catchRoutingExceprions $ app cfg

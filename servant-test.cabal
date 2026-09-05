@@ -59,6 +59,8 @@ executable servant-test
   -- other-extensions:
   -- Other library packages from which modules are imported.
   build-depends:
+    servant-auth-server,
+    jose,
     time,
     sop-core,
     http-types,

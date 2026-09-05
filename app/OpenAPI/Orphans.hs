@@ -9,21 +9,22 @@ module OpenAPI.Orphans () where
 import Control.Lens ((&), (<>~))
 import Data.OpenApi
 import Servant
+import Servant.Auth.Server
 import Servant.OpenApi
 
-instance HasOpenApi api => HasOpenApi (BasicAuth realm usr :> api) where
+instance HasOpenApi api => HasOpenApi (Auth '[JWT] usr :> api) where
   toOpenApi _ =
     toOpenApi (Proxy :: Proxy api)
       & components
         . securitySchemes
         <>~ SecurityDefinitions
-          [("BasicAuth", basicAuthSchema)]
+          [("JWT", bearerJWTScheme)]
       & allOperations
         . security
         <>~ [SecurityRequirement [("BasicAuth", [])]]
     where
-      basicAuthSchema =
+      bearerJWTScheme =
         SecurityScheme
-          { _securitySchemeType = SecuritySchemeHttp HttpSchemeBasic
-          , _securitySchemeDescription = Just "Basic access authentication"
+          { _securitySchemeType = SecuritySchemeHttp $ HttpSchemeBearer $ Just "JWT"
+          , _securitySchemeDescription = Just "JWT via Authorisation: Bearer <token>"
           }
