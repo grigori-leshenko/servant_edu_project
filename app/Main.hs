@@ -26,9 +26,11 @@ module Main (main) where
 
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
+import Control.Monad
 import Control.Monad.Except (ExceptT (..), MonadError, runExceptT)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, encode, object, (.=))
+import Data.ByteString.Lazy qualified as BSL
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.OpenApi
   ( HasInfo (info)
@@ -40,8 +42,9 @@ import Data.OpenApi
 import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8)
 import Data.Text.IO qualified as TIO (hPutStrLn, putStrLn)
-import Data.Time (getCurrentTime)
+import Data.Time (addUTCTime, getCurrentTime)
 import Errors
 import GHC.Generics (Generic)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
@@ -88,6 +91,21 @@ import Users (User (User, uid), UserId (UserId))
 
 data AuthedUser = AU {auName :: String, auIsAdmin :: Bool}
   deriving (Show, Generic, ToJSON, FromJSON, FromJWT, ToJWT)
+
+data Creds = Creds
+  { credsLogin :: Text
+  , credsPass :: Text
+  }
+  deriving (Show, Generic, FromJSON, ToSchema)
+
+data TokenResponse = TR {accesstoken :: Text}
+  deriving (Show, Generic)
+  deriving anyclass (ToJSON, ToSchema)
+
+findUser :: Text -> Text -> Maybe AuthedUser
+findUser "admin" "1122" = Just $ AU "admin" True
+findUser "viewer" "1111" = Just $ AU "viewer" False
+findUser _ _ = Nothing
 
 _authCheck :: BasicAuthCheck AuthedUser
 _authCheck = BasicAuthCheck auCheck
@@ -169,11 +187,21 @@ catchRoutingExceprions baseApp req rspnd = do
           )
 
 data Routes mode = Routes
-  { addUser ::
+  { login ::
+      mode
+        :- "login"
+          :> ReqBody '[JSON] Creds
+          :> UVerb
+               'POST
+               '[JSON]
+               '[WithStatus 200 TokenResponse, WithStatus 401 ErrorBody, WithStatus 403 ErrorBody]
+  , addUser ::
       mode
         :- "users"
           :> ReqBody '[JSON] NewUser
-          -- :> BasicAuth "add user" AuthedUser
+          :> Auth
+               '[JWT]
+               AuthedUser
           :> UVerb
                'POST
                '[JSON]
@@ -189,7 +217,6 @@ data Routes mode = Routes
           :> Capture
                "userId"
                WebUserId
-          -- :> BasicAuth "get user" AuthedUser
           :> Auth
                '[JWT]
                AuthedUser
@@ -203,7 +230,6 @@ data Routes mode = Routes
   deriving (Generic)
 
 businesServer :: AppConfig -> Routes (AsServer)
--- businesServer = hoistServer (Proxy @(NamedRoutes Routes)) catchInternalServerError (rawBusinessServer)
 businesServer cfg =
   hoistServerWithContext
     (Proxy @(NamedRoutes Routes))
@@ -216,28 +242,47 @@ businesServer cfg =
     rawBusinessServer :: Routes (AsServerT AppM)
     rawBusinessServer =
       Routes
-        { addUser = addUser
+        { login = login_
+        , addUser = addUser
         , list = list
         , get = get_
         , sanityCheck = sanityCheck
         }
       where
-        addUser (NewUser n) = do
+        login_ (Creds l p) = do
+          logMsg "login"
+          runUVerbT $ do
+            case findUser l p of
+              Nothing -> throwUVerb BadCredentials
+              Just user -> do
+                confg <- asks id
+                let jwtS = confg.cfgJwtSettings
+                exT <- liftIO $ addUTCTime (60 * 10) <$> getCurrentTime
+                etoken <- liftIO $ makeJWT user jwtS $ Just exT
+                case etoken of
+                  Left _err -> throwUVerb TokenCreationFail
+                  Right token ->
+                    pure $ WithStatus @200 $ TR . decodeUtf8 . BSL.toStrict $ token
+
+        addUser (NewUser n) ar = do
           logMsg "addUser"
           runUVerbT $ do
-            -- unless au.auIsAdmin $ do
-            --   throwUVerb $ Denied
-            let vResult = validateName n
-            case vResult of
-              Left r -> throwUVerb r
-              Right _ -> do
-                config <- asks id
-                let ref = config.cfgUsersRef
-                users <- liftIO $ readIORef ref
-                let newId = Prelude.length users + 1
-                    u = User (UserId newId) n
-                liftIO $ writeIORef ref $ u : users
-                pure $ WithStatus @200 $ toWebUser u
+            case ar of
+              Authenticated au -> do
+                unless au.auIsAdmin $ do
+                  throwUVerb Denied
+                let vResult = validateName n
+                case vResult of
+                  Left r -> throwUVerb r
+                  Right _ -> do
+                    config <- asks id
+                    let ref = config.cfgUsersRef
+                    users <- liftIO $ readIORef ref
+                    let newId = Prelude.length users + 1
+                        u = User (UserId newId) n
+                    liftIO $ writeIORef ref $ u : users
+                    pure $ WithStatus @200 $ toWebUser u
+              _ -> throwUVerb Denied
 
         list = do
           logMsg "list"
@@ -246,6 +291,7 @@ businesServer cfg =
             let ref = config.cfgUsersRef
             users <- liftIO $ readIORef ref
             pure $ WithStatus @200 $ toWebUser <$> users
+
         get_ (WebUserId lookup_uid) ar = do
           logMsg "getUser"
           runUVerbT $ do

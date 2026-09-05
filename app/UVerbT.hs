@@ -44,7 +44,9 @@ mapAppError = \case
   InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
   UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
   DuplicatedUser n -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
-  Denied -> ErrorBody "access_deniad" "access deniad"
+  Denied -> ErrorBody "access_denied" "access denied"
+  BadCredentials -> ErrorBody "bad_credentials" "bad credentials"
+  TokenCreationFail -> ErrorBody "token_creation_fail" "token creation fail"
 
 throwUVerb ::
   forall s xs m a.
