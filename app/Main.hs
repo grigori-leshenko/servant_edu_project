@@ -31,7 +31,8 @@ import Control.Monad.Except (ExceptT (..), MonadError, runExceptT)
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, encode, object, (.=))
 import Data.ByteString.Lazy qualified as BSL
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import Data.Map qualified as Map
 import Data.OpenApi
   ( HasInfo (info)
   , HasTitle (title)
@@ -47,8 +48,13 @@ import Data.Text.IO qualified as TIO (hPutStrLn, putStrLn)
 import Data.Time (addUTCTime, getCurrentTime)
 import Errors
 import GHC.Generics (Generic)
-import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
-import Network.Wai (Middleware, responseLBS)
+import Network.HTTP.Types
+  ( Status (statusCode)
+  , StdMethod (GET, POST)
+  , hContentType
+  , internalServerError500
+  )
+import Network.Wai (Middleware, responseLBS, responseStatus)
 import Network.Wai.Handler.Warp (run)
 import Network.Wai.Middleware.Cors
   ( CorsResourcePolicy (corsMethods, corsRequestHeaders)
@@ -361,10 +367,18 @@ corsMW = cors $ const $ Just policy
         , corsRequestHeaders = ["Content-Type", "Authorization"]
         }
 
+statusMetricsMidldeware :: IORef (Map.Map Int Int) -> Middleware
+statusMetricsMidldeware counterRef baseApp req respond = baseApp req $ \res -> do
+  modifyIORef' counterRef (Map.insertWith (+) (statusCode (responseStatus res)) 1)
+  m <- readIORef counterRef
+  putStrLn $ show m
+  respond res
+
 main :: IO ()
 main = do
   putStrLn "start"
   ref <- newIORef []
+  counterRef <- newIORef Map.empty
   jwk <- generateKey
   putStrLn $ show jwk
   let cfg = AppConfig ref "[dev]" (defaultJWTSettings jwk) defaultCookieSettings
@@ -372,5 +386,6 @@ main = do
         catchRoutingExceprions
           . corsMW
           . logStdoutDev
+          . statusMetricsMidldeware counterRef
           $ app cfg
   run 8888 composedApp
