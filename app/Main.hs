@@ -55,6 +55,7 @@ import Network.Wai.Middleware.Cors
   , cors
   , simpleCorsResourcePolicy
   )
+import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import OpenAPI.Orphans ()
 import Servant
   ( Application
@@ -368,7 +369,8 @@ main = do
   putStrLn $ show jwk
   let cfg = AppConfig ref "[dev]" (defaultJWTSettings jwk) defaultCookieSettings
       composedApp =
-        corsMW
-          . catchRoutingExceprions
+        catchRoutingExceprions
+          . corsMW
+          . logStdoutDev
           $ app cfg
   run 8888 composedApp
