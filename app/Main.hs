@@ -50,6 +50,11 @@ import GHC.Generics (Generic)
 import Network.HTTP.Types (StdMethod (GET, POST), hContentType, internalServerError500)
 import Network.Wai (Middleware, responseLBS)
 import Network.Wai.Handler.Warp (run)
+import Network.Wai.Middleware.Cors
+  ( CorsResourcePolicy (corsMethods, corsRequestHeaders)
+  , cors
+  , simpleCorsResourcePolicy
+  )
 import OpenAPI.Orphans ()
 import Servant
   ( Application
@@ -346,6 +351,15 @@ customContext cfg = customFormatters :. cfg.cfgCookieSettings :. cfg.cfgJwtSetti
 app :: AppConfig -> Application
 app cfg = serveWithContext (Proxy @FullAPI) (customContext cfg) $ appServer cfg
 
+corsMW :: Middleware
+corsMW = cors $ const $ Just policy
+  where
+    policy =
+      simpleCorsResourcePolicy
+        { corsMethods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+        , corsRequestHeaders = ["Content-Type", "Authorization"]
+        }
+
 main :: IO ()
 main = do
   putStrLn "start"
@@ -353,4 +367,8 @@ main = do
   jwk <- generateKey
   putStrLn $ show jwk
   let cfg = AppConfig ref "[dev]" (defaultJWTSettings jwk) defaultCookieSettings
-  run 8888 $ catchRoutingExceprions $ app cfg
+      composedApp =
+        corsMW
+          . catchRoutingExceprions
+          $ app cfg
+  run 8888 composedApp

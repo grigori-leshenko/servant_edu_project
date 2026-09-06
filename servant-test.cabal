@@ -59,6 +59,7 @@ executable servant-test
   -- other-extensions:
   -- Other library packages from which modules are imported.
   build-depends:
+    wai-cors,
     bytestring,
     servant-auth-server,
     jose,
