@@ -1,19 +1,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module UVerbT (UVerbT (..), runUVerbT, throwUVerb, ErrorBody (..)) where
+module App.UVerbT (UVerbT (..), runUVerbT, throwUVerb, ErrorBody (..)) where
 
+import App.Errors
 import Control.Monad.Except
 import Control.Monad.IO.Class
 import Control.Monad.RWS
 import Data.Aeson
 import Data.OpenApi
 import Data.Text
-import Errors
 import GHC.Generics
 import Servant (HasStatus, IsMember, Union, WithStatus (WithStatus), respond)
 import Servant.API.Status qualified

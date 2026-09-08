@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Users (UserId (..), User (..)) where
+module App.Users (UserId (..), User (..)) where
 
 import Data.Aeson
 import GHC.Generics

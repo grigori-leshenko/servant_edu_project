@@ -1,10 +1,7 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE OverloadedStrings #-}
+module App.Errors (AppError (..)) where
 
-module Errors (AppError (..)) where
-
+import App.Users (UserId)
 import GHC.TypeLits (Nat)
-import Users (UserId)
 
 data AppError (status :: Nat) where
   UserNotFound :: UserId -> AppError 404
