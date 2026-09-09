@@ -63,6 +63,8 @@ executable servant-test
   -- other-extensions:
   -- Other library packages from which modules are imported.
   build-depends:
+    effectful-th,
+    effectful,
     wai-extra,
     wai-cors,
     bytestring,

@@ -10,7 +10,7 @@ import App.AppM
 import App.Config
 import App.Errors
 import App.UVerbT
-import App.Users (User (User, uid), UserId (UserId))
+import App.Users (User (User, uid), UserId (UserId), getList, runUsers)
 import Control.Monad
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON)
@@ -30,6 +30,7 @@ import Network.HTTP.Types
   )
 import OpenAPI.Orphans ()
 
+import Effectful (runEff)
 import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..))
 import Servant.API (Capture, FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
@@ -175,7 +176,8 @@ rawBusinessServer =
       runUVerbT $ do
         config <- asks id
         let ref = config.cfgUsersRef
-        users <- liftIO $ readIORef ref
+        --
+        users <- liftIO $ runEff $ runUsers ref getList
         pure $ WithStatus @200 $ toWebUser <$> users
 
     get_ (WebUserId lookup_uid) ar = do
