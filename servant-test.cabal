@@ -58,6 +58,7 @@ executable servant-test
     App.AppM
     App.Config
     App.Server
+    App.Routes
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- Other library packages from which modules are imported.
