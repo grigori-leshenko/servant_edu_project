@@ -8,10 +8,10 @@ module App.Routes where
 
 -- import App.AppEff
 import App.AppM
-import App.Config
 import App.Logger (Logger, logMsg, runLogger)
 import App.UVerbT
-import App.Users (User (User), UserId (UserId), Users, getList, runUsers)
+import App.Users (User (User), UserId (UserId))
+import App.UsersE (Users, getList, runUsers)
 
 -- import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON)
@@ -187,7 +187,7 @@ rawBusinessServer =
             . runEff
             . runReader config
             . runLogger
-            . runUsers config.cfgUsersRef
+            . runUsers
             $ getListHandler
         pure $ WithStatus @200 $ toWebUser <$> users
 

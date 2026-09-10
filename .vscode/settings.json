@@ -14,5 +14,7 @@
   "editor.insertSpaces": true,
   // --- Линтинг ---
   "haskell.plugin.hlint.globalOn": true,
-  "todo-tree.regex.regex": "(//|#|--|<!--|/\\*)\\s*($TAGS)"
+  "todo-tree.regex.regex": "(//|#|--|<!--|/\\*)\\s*($TAGS)",
+  "haskell.plaugin.ghcide-type-lenses.globalOn": true,
+  "haskell.inlayHints.showTypeSignatures": true,
 }

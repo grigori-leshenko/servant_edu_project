@@ -4,7 +4,7 @@ module App.AppEff where
 
 import App.Config (AppConfig (..))
 import App.Logger
-import App.Users
+import App.UsersE
 import Effectful
 import Effectful.Reader.Static (Reader)
 

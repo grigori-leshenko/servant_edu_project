@@ -54,10 +54,12 @@ executable servant-test
     App.UVerbT
     App.Errors
     App.Users
+    App.UsersE
     OpenAPI.Orphans
     App.AppM
     App.Config
     App.Server
+    App.ServerE
     App.Routes
     App.AppEff
     App.Logger
