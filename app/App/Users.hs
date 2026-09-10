@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module App.Users (UserId (..), User (..), runUsers, getList) where
+module App.Users (UserId (..), User (..), runUsers, getList, Users) where
 
 import Data.Aeson
 import Data.IORef (IORef, readIORef)
