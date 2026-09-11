@@ -7,11 +7,10 @@
 module App.Routes where
 
 -- import App.AppEff
-import App.AppM
-import App.Logger (Logger, logMsg, runLogger)
+import App.Logger (Logger, logMsg)
 import App.UVerbT
 import App.Users (User (User), UserId (UserId))
-import App.UsersE (Users, getList, runUsers)
+import App.UsersE (Users, getList)
 
 -- import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON)
@@ -27,15 +26,15 @@ import Network.HTTP.Types
   )
 import OpenAPI.Orphans ()
 
-import Control.Monad.Reader (ask)
-import Effectful (Eff, MonadIO (liftIO), runEff, type (:>))
-import Effectful.Reader.Static (runReader)
+import App.AppEff (AppEff)
+import Control.Monad.Reader (MonadTrans (..))
+import Effectful (Eff, type (:>))
 import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..))
 import Servant.API (FromHttpApiData (parseUrlPiece), JSON, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.Auth.Server
 import Servant.Server.Generic (AsServerT)
-import Text.Read
+import Text.Read (readMaybe)
 
 data AuthedUser = AU {auName :: String, auIsAdmin :: Bool}
   deriving (Show, Generic, ToJSON, FromJSON, FromJWT, ToJWT)
@@ -131,7 +130,7 @@ getListHandler = do
   users <- getList
   pure users
 
-rawBusinessServer :: Routes (AsServerT AppM)
+rawBusinessServer :: Routes (AsServerT AppEff)
 rawBusinessServer =
   Routes
     { --   login = login_
@@ -177,19 +176,22 @@ rawBusinessServer =
     --       _ -> throwUVerb Denied
 
     list = do
-      -- logMsg "list"
-      runUVerbT $ do
-        config <- ask
-        -- let ref = config.cfgUsersRef
+      runUVerbT (WithStatus @200) $ do
+        -- logMsg "list"
+        -- config <- ask
+        users <- UVerbT . lift $ getListHandler
+        pure $ toWebUser <$> users
 
-        users <-
-          liftIO
-            . runEff
-            . runReader config
-            . runLogger
-            . runUsers
-            $ getListHandler
-        pure $ WithStatus @200 $ toWebUser <$> users
+-- runUVerbT $ do
+--   -- let ref = config.cfgUsersRef
+
+--   users <-
+--     liftIO
+--       . runEff
+--       . runReader config
+--       . runLogger
+--       . runUsers
+--   pure $ WithStatus @200 $ toWebUser <$> users
 
 -- get_ (WebUserId lookup_uid) ar = do
 --   logMsg "getUser"

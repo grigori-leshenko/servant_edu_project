@@ -6,13 +6,20 @@
 
 module App.Server where
 
-import App.AppM
+import App.AppEff (AppEff)
+
+-- import App.AppM
 import App.Config
 import App.Routes
+import App.UsersE (runUsers)
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.Reader
+import Control.Monad.Except (ExceptT (..), MonadError (throwError), runExceptT)
+
+-- import Control.Monad.Reader
+
+-- import App.Errors (AppError (..))
+import App.Logger (runLogger)
 import Data.Aeson (encode, object, (.=))
 import Data.IORef (IORef, modifyIORef', readIORef)
 import Data.Map qualified as Map
@@ -23,6 +30,9 @@ import Data.OpenApi
   )
 import Data.Text (pack)
 import Data.Text.IO qualified as TIO (hPutStrLn)
+import Effectful (liftIO, runEff)
+import Effectful.Error.Dynamic (runErrorNoCallStack)
+import Effectful.Reader.Static (runReader)
 import Network.HTTP.Types
   ( Status (statusCode)
   , hContentType
@@ -119,11 +129,23 @@ businesServer cfg =
   hoistServerWithContext
     (Proxy @(NamedRoutes Routes))
     (Proxy :: Proxy '[ErrorFormatters, JWTSettings, CookieSettings])
-    (catchInternalServerError . nt)
+    nt
     rawBusinessServer
   where
-    nt :: AppM a -> Handler a
-    nt action = runReaderT (action.runAppM) cfg
+    nt :: AppEff a -> Handler a
+    -- nt action = runReaderT (action.runAppM) cfg
+    nt eff = do
+      result <-
+        liftIO
+          . runEff
+          . runReader cfg
+          . runLogger
+          . runErrorNoCallStack
+          . runUsers
+          $ eff
+      case result of
+        Left _ -> throwError err500
+        Right a -> pure a
 
 openApiDoc :: OpenApi
 openApiDoc =
