@@ -20,8 +20,8 @@ import Effectful.TH (makeEffect)
 
 data Users :: Effect where
   GetList :: Users m [User]
-  AddUser :: String -> Users m (Either (AppError 400) User)
-  GetUser :: UserId -> Users m (Either (AppError 404) User)
+  AddUser :: String -> Users m (Either AppError User)
+  GetUser :: UserId -> Users m (Either AppError User)
 
 type instance DispatchOf Users = Dynamic
 
@@ -51,7 +51,7 @@ runUsers = interpret $ \_ -> \case
         liftIO $ writeIORef ref $ u : users
         pure $ Right u
 
-validateName :: [Char] -> Either (AppError 400) ()
+validateName :: [Char] -> Either (AppError) ()
 validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
 validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
 validateName _ = Right ()

@@ -18,7 +18,7 @@ import Data.SOP.BasicFunctors (I (..))
 import Data.Text
 import Effectful (Eff, IOE, (:>))
 import GHC.Generics
-import Servant (IsMember, Union)
+import Servant (IsMember, Proxy, Union)
 
 -- import Servant.API.Status qualified
 
@@ -54,7 +54,7 @@ data ErrorBody = ErrorBody {error :: Text, message :: Text}
     , ToSchema
     )
 
-mapAppError :: AppError status -> ErrorBody
+mapAppError :: AppError -> ErrorBody
 mapAppError = \case
   InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
   UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
@@ -66,8 +66,8 @@ mapAppError = \case
 throwUVerb ::
   forall s xs es a.
   (Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
-  AppError s -> UVerbT xs es a
-throwUVerb e = UVerbT . ExceptT $ pure $ Left . inject . I $ WithStatus @s $ mapAppError e
+  (Proxy s) -> AppError -> UVerbT xs es a
+throwUVerb _ e = UVerbT . ExceptT $ pure $ Left . inject . I $ WithStatus @s $ mapAppError e
 
 liftEff :: Eff es a -> UVerbT xs es a
 liftEff = UVerbT . lift

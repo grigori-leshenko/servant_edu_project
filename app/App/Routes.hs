@@ -6,13 +6,11 @@
 
 module App.Routes where
 
--- import App.AppEff
 import App.Logger (Logger, logMsg)
 import App.UVerbT
 import App.Users (User (User), UserId (UserId))
 import App.UsersE (Users, addUser, getList, getUser)
 
--- import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON)
 import Data.OpenApi
   ( ToParamSchema
@@ -35,7 +33,7 @@ import Data.Text.Encoding (decodeUtf8)
 import Data.Time (addUTCTime, getCurrentTime)
 import Effectful (Eff, MonadIO (liftIO), type (:>))
 import Effectful.Reader.Static (asks)
-import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..))
+import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..), Proxy (Proxy))
 import Servant.API (Capture, FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.Auth.Server
@@ -154,13 +152,13 @@ rawBusinessServer =
       logMsg "login"
       runUVerbT $ do
         case findUser l p of
-          Nothing -> throwUVerb BadCredentials
+          Nothing -> throwUVerb (Proxy @401) BadCredentials
           Just user -> do
             expirationT <- liftIO $ addUTCTime (60 * 10) <$> getCurrentTime
             jwtS <- liftEff $ asks cfgJwtSettings
             etoken <- liftIO $ makeJWT user jwtS $ Just expirationT
             case etoken of
-              Left _err -> throwUVerb TokenCreationFail
+              Left _err -> throwUVerb (Proxy @401) TokenCreationFail
               Right token ->
                 pure $ WithStatus @200 $ TR . decodeUtf8 . BSL.toStrict $ token
 
@@ -170,12 +168,13 @@ rawBusinessServer =
         case ar of
           Authenticated au -> do
             unless au.auIsAdmin $ do
-              throwUVerb Denied
+              throwUVerb (Proxy @403) Denied
             res <- liftEff $ App.UsersE.addUser name
             case res of
-              Left e -> throwUVerb e
+              Left e@(InvalidUserName _) -> throwUVerb (Proxy @400) e
+              Left e -> throwUVerb (Proxy @400) e
               Right u -> pure $ WithStatus @200 $ toWebUser u
-          _ -> throwUVerb Denied
+          _ -> throwUVerb (Proxy @403) Denied
 
     list_ = runUVerbT $ do
       liftEff $ logMsg "list"
@@ -190,10 +189,10 @@ rawBusinessServer =
             res <- liftEff $ getUser $ UserId lookup_uid
             case res of
               Right u -> pure $ WithStatus @200 $ toWebUser u
-              Left e -> throwUVerb e
-          _ -> throwUVerb $ Denied
+              Left e -> throwUVerb (Proxy @404) e
+          _ -> throwUVerb (Proxy @403) Denied
     sanityCheck = do
       logMsg "sanityCheck"
       runUVerbT $ do
-        _ <- throwUVerb $ UserNotFound $ UserId 0
+        _ <- throwUVerb (Proxy @404) $ UserNotFound $ UserId 0
         pure $ WithStatus @200 ()
