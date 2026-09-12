@@ -38,11 +38,11 @@ instance IOE :> es => MonadIO (UVerbT xs es) where
   liftIO = UVerbT . liftIO
 
 runUVerbT ::
-  forall sr xs es a.
-  IsMember sr xs => (a -> sr) -> UVerbT xs es a -> Eff es (Union xs)
-runUVerbT sr (UVerbT act) = do
+  forall xs es a.
+  IsMember a xs => UVerbT xs es a -> Eff es (Union xs)
+runUVerbT (UVerbT act) = do
   res <- runExceptT act
-  pure $ either id (inject . I . sr) res
+  pure $ either id (inject . I) res
 
 -- <$> runExceptT act
 

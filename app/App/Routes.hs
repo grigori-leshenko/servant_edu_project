@@ -180,7 +180,7 @@ rawBusinessServer =
     --       _ -> throwUVerb Denied
 
     list = do
-      runUVerbT (WithStatus @200) $ do
+      runUVerbT $ do
         -- logMsg "list"
         -- config <- ask
         users <- UVerbT . lift $ getListHandler
@@ -188,7 +188,7 @@ rawBusinessServer =
         _ <- throwUVerb $ BadCredentials
         case users of
           [] -> throwUVerb $ Denied
-          _ -> pure $ toWebUser <$> users
+          _ -> pure $ WithStatus @200 $ toWebUser <$> users
 
 -- runUVerbT $ do
 --   -- let ref = config.cfgUsersRef
