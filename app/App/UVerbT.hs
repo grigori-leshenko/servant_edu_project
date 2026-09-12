@@ -7,11 +7,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb) where
+module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb, liftEff) where
 
 -- import App.Errors
 import Control.Monad.Except
-import Control.Monad.Writer.Strict (MonadIO (liftIO))
+import Control.Monad.Writer.Strict (MonadIO (liftIO), MonadTrans (lift))
 import Data.Aeson
 import Data.OpenApi
 import Data.SOP.BasicFunctors (I (..))
@@ -68,3 +68,6 @@ throwUVerb ::
   (Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
   AppError s -> UVerbT xs es a
 throwUVerb e = UVerbT . ExceptT $ pure $ Left . inject . I $ WithStatus @s $ mapAppError e
+
+liftEff :: Eff es a -> UVerbT xs es a
+liftEff = UVerbT . lift

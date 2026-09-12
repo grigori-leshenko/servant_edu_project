@@ -133,7 +133,6 @@ businesServer cfg =
     rawBusinessServer
   where
     nt :: AppEff a -> Handler a
-    -- nt action = runReaderT (action.runAppM) cfg
     nt eff = do
       result <-
         liftIO

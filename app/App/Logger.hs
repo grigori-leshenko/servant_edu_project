@@ -30,6 +30,6 @@ makeEffect ''Logger
 runLogger :: (IOE :> es, Reader AppConfig :> es) => Eff (Logger : es) a -> Eff es a
 runLogger = interpret $ \_ -> \case
   LogMsg msg -> do
-    prefix <- asks cfgLogPrefix -- pure "fix_this_prefix"
+    prefix <- asks cfgLogPrefix
     now <- liftIO getCurrentTime
     liftIO $ TIO.putStrLn $ prefix <> " [" <> (Data.Text.show now) <> "] " <> msg
