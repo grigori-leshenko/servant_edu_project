@@ -137,9 +137,9 @@ businesServer cfg =
       result <-
         liftIO
           . runEff
+          . runErrorNoCallStack
           . runReader cfg
           . runLogger
-          . runErrorNoCallStack
           . runUsers
           $ eff
       case result of

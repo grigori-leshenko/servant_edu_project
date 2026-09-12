@@ -15,6 +15,7 @@ import App.Users
 import Data.IORef (readIORef, writeIORef)
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
+import Effectful.Error.Dynamic (Error, throwError)
 import Effectful.Reader.Static (Reader, asks)
 import Effectful.TH (makeEffect)
 
@@ -27,7 +28,8 @@ type instance DispatchOf Users = Dynamic
 
 makeEffect ''Users
 
-runUsers :: (IOE :> es, Reader AppConfig :> es) => Eff (Users : es) a -> Eff es a
+runUsers ::
+  (IOE :> es, Reader AppConfig :> es, Error AppError :> es) => Eff (Users : es) a -> Eff es a
 runUsers = interpret $ \_ -> \case
   GetList -> do
     ref <- asks cfgUsersRef
@@ -38,11 +40,11 @@ runUsers = interpret $ \_ -> \case
     users <- liftIO $ readIORef ref
     case lookup lookup_uid [(App.Users.uid u, u) | u <- users] of
       Just u -> pure . Right $ u
-      Nothing -> pure . Left $ UserNotFound lookup_uid
+      Nothing -> throwError $ UserNotFound lookup_uid
   AddUser name -> do
     let vResult = validateName name
     case vResult of
-      Left r -> pure $ Left r
+      Left r -> throwError r
       Right _ -> do
         ref <- asks cfgUsersRef
         users <- liftIO $ readIORef ref

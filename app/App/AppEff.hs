@@ -12,9 +12,9 @@ import Effectful.Reader.Static (Reader)
 
 type AppEffects =
   '[ Users
-   , Error AppError'
    , Logger
    , Reader AppConfig
+   , Error AppError
    , IOE
    ]
 
