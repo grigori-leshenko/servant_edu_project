@@ -9,8 +9,8 @@ module App.Routes where
 -- import App.AppEff
 import App.Logger (Logger, logMsg)
 import App.UVerbT
-import App.Users (User (User, uid), UserId (UserId))
-import App.UsersE (Users, getList)
+import App.Users (User (User), UserId (UserId))
+import App.UsersE (Users, addUser, getList, getUser)
 
 -- import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON)
@@ -30,9 +30,7 @@ import App.AppEff (AppEff)
 import App.Config
 import App.Errors (AppError (..))
 import Control.Monad (unless)
-import Control.Monad.Reader (MonadTrans (..))
 import Data.ByteString.Lazy qualified as BSL
-import Data.IORef
 import Data.Text.Encoding (decodeUtf8)
 import Data.Time (addUTCTime, getCurrentTime)
 import Effectful (Eff, MonadIO (liftIO), type (:>))
@@ -146,8 +144,8 @@ rawBusinessServer :: Routes (AsServerT AppEff)
 rawBusinessServer =
   Routes
     { login = login_
-    , addUser = addUser
-    , list = list
+    , addUser = addUser_
+    , list = list_
     , get = get_
     , sanityCheck = sanityCheck
     }
@@ -166,27 +164,21 @@ rawBusinessServer =
               Right token ->
                 pure $ WithStatus @200 $ TR . decodeUtf8 . BSL.toStrict $ token
 
-    addUser (NewUser n) ar = do
+    addUser_ (NewUser name) ar = do
       logMsg "addUser"
       runUVerbT $ do
         case ar of
           Authenticated au -> do
             unless au.auIsAdmin $ do
               throwUVerb Denied
-            let vResult = validateName n
-            case vResult of
-              Left r -> throwUVerb r
-              Right _ -> do
-                ref <- liftEff $ asks cfgUsersRef
-                users <- liftIO $ readIORef ref
-                let newId = Prelude.length users + 1
-                    u = User (UserId newId) n
-                liftIO $ writeIORef ref $ u : users
-                pure $ WithStatus @200 $ toWebUser u
+            res <- liftEff $ App.UsersE.addUser name
+            case res of
+              Left e -> throwUVerb e
+              Right u -> pure $ WithStatus @200 $ toWebUser u
           _ -> throwUVerb Denied
 
-    list = runUVerbT $ do
-      UVerbT . lift $ logMsg "list"
+    list_ = runUVerbT $ do
+      liftEff $ logMsg "list"
       users <- liftEff $ getListHandler
       pure $ WithStatus @200 $ toWebUser <$> users
 
@@ -195,17 +187,13 @@ rawBusinessServer =
       runUVerbT $ do
         case ar of
           Authenticated _au -> do
-            users <- liftEff $ getListHandler
-            case lookup (UserId lookup_uid) [(App.Users.uid u, u) | u <- users] of
-              Just u -> pure $ WithStatus @200 $ toWebUser u
-              Nothing -> throwUVerb $ UserNotFound $ UserId lookup_uid
+            res <- liftEff $ getUser $ UserId lookup_uid
+            case res of
+              Right u -> pure $ WithStatus @200 $ toWebUser u
+              Left e -> throwUVerb e
           _ -> throwUVerb $ Denied
     sanityCheck = do
       logMsg "sanityCheck"
       runUVerbT $ do
         _ <- throwUVerb $ UserNotFound $ UserId 0
         pure $ WithStatus @200 ()
-
-    validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
-    validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
-    validateName _ = Right ()
