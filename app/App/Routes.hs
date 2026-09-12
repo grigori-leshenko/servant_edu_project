@@ -27,6 +27,7 @@ import Network.HTTP.Types
 import OpenAPI.Orphans ()
 
 import App.AppEff (AppEff)
+import App.Errors (AppError (..))
 import Control.Monad.Reader (MonadTrans (..))
 import Effectful (Eff, type (:>))
 import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..))
@@ -105,22 +106,25 @@ data Routes mode = Routes
     --               , WithStatus 409 ErrorBody
     --               , WithStatus 403 ErrorBody
     --               ]
-    list :: mode :- "users" Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser]]
-    -- , get ::
-    --     mode
-    --       :- "users"
-    --         :> Capture
-    --              "userId"
-    --              WebUserId
-    --         :> Auth
-    --              '[JWT]
-    --              AuthedUser
-    --         :> UVerb
-    --              'GET
-    --              '[JSON]
-    --              '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
-    -- , sanityCheck ::
-    --     mode :- "sanityCheck" :> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
+    list ::
+      mode
+        :- "users"
+          Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser], WithStatus 403 ErrorBody, WithStatus 401 ErrorBody]
+          -- , get ::
+          --     mode
+          --       :- "users"
+          --         :> Capture
+          --              "userId"
+          --              WebUserId
+          --         :> Auth
+          --              '[JWT]
+          --              AuthedUser
+          --         :> UVerb
+          --              'GET
+          --              '[JSON]
+          --              '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
+          -- , sanityCheck ::
+          --     mode :- "sanityCheck" :> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
   deriving (Generic)
 
@@ -180,7 +184,11 @@ rawBusinessServer =
         -- logMsg "list"
         -- config <- ask
         users <- UVerbT . lift $ getListHandler
-        pure $ toWebUser <$> users
+        -- pure $ WithStatus @300 ()
+        _ <- throwUVerb $ BadCredentials
+        case users of
+          [] -> throwUVerb $ Denied
+          _ -> pure $ toWebUser <$> users
 
 -- runUVerbT $ do
 --   -- let ref = config.cfgUsersRef

@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..)) where
+module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb) where
 
 -- import App.Errors
 import Control.Monad.Except
@@ -21,7 +21,10 @@ import GHC.Generics
 import Servant (IsMember, Union)
 
 -- import Servant.API.Status qualified
-import Servant.API.UVerb (inject)
+
+import App.Errors
+import Servant.API.Status qualified
+import Servant.API.UVerb (WithStatus (..), inject)
 
 newtype UVerbT xs es a = UVerbT {unUVerbT :: ExceptT (Union xs) (Eff es) a}
   deriving newtype (Functor, Applicative, Monad, MonadError (Union xs))
@@ -31,6 +34,7 @@ newtype UVerbT xs es a = UVerbT {unUVerbT :: ExceptT (Union xs) (Eff es) a}
 --   catchError (UVerbT act) h = UVerbT $ ExceptT $ runExceptT act `catchError` (runExceptT . unUVerbT . h)
 
 instance IOE :> es => MonadIO (UVerbT xs es) where
+  liftIO :: IOE :> es => IO a -> UVerbT xs es a
   liftIO = UVerbT . liftIO
 
 runUVerbT ::
@@ -50,17 +54,17 @@ data ErrorBody = ErrorBody {error :: Text, message :: Text}
     , ToSchema
     )
 
--- mapAppError :: AppError status -> ErrorBody
--- mapAppError = \case
---   InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
---   UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
---   DuplicatedUser n -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
---   Denied -> ErrorBody "access_denied" "access denied"
---   BadCredentials -> ErrorBody "bad_credentials" "bad credentials"
---   TokenCreationFail -> ErrorBody "token_creation_fail" "token creation fail"
+mapAppError :: AppError status -> ErrorBody
+mapAppError = \case
+  InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
+  UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
+  DuplicatedUser n -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
+  Denied -> ErrorBody "access_denied" "access denied"
+  BadCredentials -> ErrorBody "bad_credentials" "bad credentials"
+  TokenCreationFail -> ErrorBody "token_creation_fail" "token creation fail"
 
--- throwUVerb ::
---   forall s xs es.
---   (Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
---   AppError s -> UVerbT xs es ()
--- throwUVerb e = UVerbT . ExceptT . fmap Left . respond $ WithStatus @s $ mapAppError e
+throwUVerb ::
+  forall s xs es a.
+  (Servant.API.Status.KnownStatus s, IsMember (WithStatus s ErrorBody) xs) =>
+  AppError s -> UVerbT xs es a
+throwUVerb e = UVerbT . ExceptT $ pure $ Left . inject . I $ WithStatus @s $ mapAppError e
