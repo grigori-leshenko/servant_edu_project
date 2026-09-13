@@ -9,7 +9,7 @@
 
 module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb, liftEff) where
 
--- import App.Errors
+import App.UsersE (UsersError (..))
 import Control.Monad.Except
 import Control.Monad.Writer.Strict (MonadIO (liftIO), MonadTrans (lift))
 import Data.Aeson
@@ -56,9 +56,9 @@ data ErrorBody = ErrorBody {error :: Text, message :: Text}
 
 mapAppError :: AppError -> ErrorBody
 mapAppError = \case
-  InvalidUserName n -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
-  UserNotFound uid -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
-  DuplicatedUser n -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
+  UsersError (InvalidUserName n) -> ErrorBody "invalid_name" $ "Name \"" <> pack n <> "\" is not valid"
+  UsersError (UserNotFound uid) -> ErrorBody "user_not_found" $ "User with id " <> (pack . Prelude.show $ uid) <> " not found"
+  UsersError (DuplicatedUser n) -> ErrorBody "duplicated_user" $ "Name \"" <> pack n <> "\" already exists"
   Denied -> ErrorBody "access_denied" "access denied"
   BadCredentials -> ErrorBody "bad_credentials" "bad credentials"
   TokenCreationFail -> ErrorBody "token_creation_fail" "token creation fail"

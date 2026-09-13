@@ -7,53 +7,52 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module App.UsersE (UserId (..), User (..), runUsers, getList, Users, getUser, addUser) where
+module App.UsersE (runUsers, getList, Users, getUser, addUser, UsersError (..)) where
 
-import App.Config (AppConfig (cfgUsersRef))
-import App.Errors
+import App.DBE (DBE (..), DBError (NotFound), dBAddUser, dBGetUser, dBGetUsers)
 import App.Users
-import Data.IORef (readIORef, writeIORef)
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
-import Effectful.Error.Dynamic (Error, throwError)
-import Effectful.Reader.Static (Reader, asks)
+import Effectful.Error.Static (Error, throwError)
+
+-- import Effectful.Error.Static (mapError)
+
+import App.ErrorsE (mapError)
 import Effectful.TH (makeEffect)
+
+data UsersError where
+  UserNotFound :: UserId -> UsersError
+  InvalidUserName :: String -> UsersError
+  DuplicatedUser :: String -> UsersError
+
+deriving instance Show UsersError
 
 data Users :: Effect where
   GetList :: Users m [User]
-  AddUser :: String -> Users m (Either AppError User)
-  GetUser :: UserId -> Users m (Either AppError User)
+  AddUser :: String -> Users m User
+  GetUser :: UserId -> Users m User
 
 type instance DispatchOf Users = Dynamic
 
 makeEffect ''Users
 
 runUsers ::
-  (IOE :> es, Reader AppConfig :> es, Error AppError :> es) => Eff (Users : es) a -> Eff es a
+  (DBE :> es, Error UsersError :> es) => Eff (Users : es) a -> Eff es a
 runUsers = interpret $ \_ -> \case
   GetList -> do
-    ref <- asks cfgUsersRef
-    users <- liftIO $ readIORef ref
-    pure users
+    dBGetUsers
   GetUser lookup_uid -> do
-    ref <- asks cfgUsersRef
-    users <- liftIO $ readIORef ref
-    case lookup lookup_uid [(App.Users.uid u, u) | u <- users] of
-      Just u -> pure . Right $ u
-      Nothing -> throwError $ UserNotFound lookup_uid
+    user <- mapError (\(NotFound uid) -> UserNotFound uid) $ dBGetUser lookup_uid
+    pure user
   AddUser name -> do
     let vResult = validateName name
     case vResult of
       Left r -> throwError r
       Right _ -> do
-        ref <- asks cfgUsersRef
-        users <- liftIO $ readIORef ref
-        let newId = Prelude.length users + 1
-            u = User (UserId newId) name
-        liftIO $ writeIORef ref $ u : users
-        pure $ Right u
+        user <- mapError (\_ -> DuplicatedUser name) $ dBAddUser name
+        pure user
 
-validateName :: [Char] -> Either (AppError) ()
+validateName :: [Char] -> Either (UsersError) ()
 validateName n@(Prelude.null -> True) = Left $ InvalidUserName n
 validateName n@((> 50) . Prelude.length -> True) = Left $ InvalidUserName n
 validateName _ = Right ()

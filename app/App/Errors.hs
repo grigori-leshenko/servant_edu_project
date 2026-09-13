@@ -1,21 +1,10 @@
-module App.Errors (AppError (..), AppError' (..)) where
+module App.Errors (AppError (..)) where
 
-import App.Users (UserId)
+import App.UsersE (UsersError)
 
 data AppError where
-  UserNotFound :: UserId -> AppError
-  InvalidUserName :: String -> AppError
-  DuplicatedUser :: String -> AppError
+  UsersError :: UsersError -> AppError
   Denied :: AppError
   BadCredentials :: AppError
   TokenCreationFail :: AppError
 deriving instance Show AppError
-
-data AppError' where
-  UserNotFound' :: UserId -> AppError'
-  InvalidUserName' :: String -> AppError'
-  DuplicatedUser' :: String -> AppError'
-  Denied' :: AppError'
-  BadCredentials' :: AppError'
-  TokenCreationFail' :: AppError'
-deriving instance Show AppError'

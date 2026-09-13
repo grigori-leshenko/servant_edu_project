@@ -8,10 +8,10 @@ module App.Server where
 
 import App.AppEff (AppEff)
 
--- import App.AppM
 import App.Config
+import App.DBE
 import App.Routes
-import App.UsersE (runUsers)
+import App.UsersE (UsersError, runUsers)
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
 import Control.Monad.Except (ExceptT (..), MonadError (throwError), runExceptT)
@@ -19,6 +19,8 @@ import Control.Monad.Except (ExceptT (..), MonadError (throwError), runExceptT)
 -- import Control.Monad.Reader
 
 -- import App.Errors (AppError (..))
+
+import App.Errors (AppError)
 import App.Logger (runLogger)
 import Data.Aeson (encode, object, (.=))
 import Data.IORef (IORef, modifyIORef', readIORef)
@@ -31,7 +33,7 @@ import Data.OpenApi
 import Data.Text (pack)
 import Data.Text.IO qualified as TIO (hPutStrLn)
 import Effectful (liftIO, runEff)
-import Effectful.Error.Dynamic (runErrorNoCallStack)
+import Effectful.Error.Static (runErrorNoCallStack)
 import Effectful.Reader.Static (runReader)
 import Network.HTTP.Types
   ( Status (statusCode)
@@ -137,14 +139,17 @@ businesServer cfg =
       result <-
         liftIO
           . runEff
-          . runErrorNoCallStack
+          . runErrorNoCallStack @AppError
+          . runErrorNoCallStack @UsersError
+          . runErrorNoCallStack @DBError
           . runReader cfg
           . runLogger
+          . runBDEIORef (cfgUsersRef cfg)
           . runUsers
           $ eff
       case result of
-        Left _ -> throwError err500
-        Right a -> pure a
+        Right (Right (Right a)) -> pure a
+        _ -> throwError err500
 
 openApiDoc :: OpenApi
 openApiDoc =

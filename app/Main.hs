@@ -3,22 +3,35 @@
 module Main (main) where
 
 import App.Config
+import App.DBE (DBE, DBError, runBDEIORef)
 import App.Errors (AppError)
 import App.Logger (Logger, logMsg, runLogger)
 import App.Routes (getListHandler)
 import App.Server
 import App.ServerE (Server, runServer, runServerWarp)
-import App.UsersE (Users, runUsers)
+import App.UsersE (Users, UsersError, runUsers)
 import Data.IORef (newIORef)
 import Data.Map qualified as Map
 import Effectful
-import Effectful.Error.Dynamic (Error, runErrorNoCallStack)
+import Effectful.Error.Static (Error, runErrorNoCallStack)
 import Effectful.Reader.Static (Reader, ask, runReader)
 import Network.Wai.Middleware.RequestLogger (logStdoutDev)
 import OpenAPI.Orphans ()
 import Servant.Auth.Server
 
-mainEff :: Eff '[Server, Users, Logger, Reader AppConfig, Error AppError, IOE] ()
+mainEff ::
+  Eff
+    '[ Server
+     , Users
+     , DBE
+     , Logger
+     , Reader AppConfig
+     , Error DBError
+     , Error UsersError
+     , Error AppError
+     , IOE
+     ]
+    ()
 mainEff = do
   logMsg "start main effect"
   cfg <- ask
@@ -44,9 +57,27 @@ main = do
           , cfgCookieSettings = defaultCookieSettings
           , counterRef = counterRef
           }
-  _ <- runEff . runErrorNoCallStack @AppError . runReader cfg . runLogger . runUsers $ getListHandler
+  _ <-
+    runEff
+      . runErrorNoCallStack @AppError
+      . runErrorNoCallStack @UsersError
+      . runErrorNoCallStack @DBError
+      . runReader cfg
+      . runLogger
+      . runBDEIORef ref
+      . runUsers
+      $ getListHandler
   result <-
-    runEff . runErrorNoCallStack . runReader cfg . runLogger . runUsers . runServerWarp $ mainEff
+    runEff
+      . runErrorNoCallStack @AppError
+      . runErrorNoCallStack @UsersError
+      . runErrorNoCallStack @DBError
+      . runReader cfg
+      . runLogger
+      . runBDEIORef ref
+      . runUsers
+      . runServerWarp
+      $ mainEff
   case result of
     Left err -> putStrLn $ "Fatal application error: " ++ show err
-    Right () -> putStrLn "Server stopped gracefully"
+    Right _ -> putStrLn "Server stopped gracefully"

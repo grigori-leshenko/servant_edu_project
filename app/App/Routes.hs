@@ -9,7 +9,7 @@ module App.Routes where
 import App.Logger (Logger, logMsg)
 import App.UVerbT
 import App.Users (User (User), UserId (UserId))
-import App.UsersE (Users, addUser, getList, getUser)
+import App.UsersE (Users, getList)
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.OpenApi
@@ -27,14 +27,13 @@ import OpenAPI.Orphans ()
 import App.AppEff (AppEff)
 import App.Config
 import App.Errors (AppError (..))
-import Control.Monad (unless)
 import Data.ByteString.Lazy qualified as BSL
 import Data.Text.Encoding (decodeUtf8)
 import Data.Time (addUTCTime, getCurrentTime)
 import Effectful (Eff, MonadIO (liftIO), type (:>))
 import Effectful.Reader.Static (asks)
 import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..), Proxy (Proxy))
-import Servant.API (Capture, FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
+import Servant.API (FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.Auth.Server
 import Servant.Server.Generic (AsServerT)
@@ -94,39 +93,39 @@ data Routes mode = Routes
                            'POST
                            '[JSON]
                            '[WithStatus 200 TokenResponse, WithStatus 401 ErrorBody, WithStatus 403 ErrorBody]
-  , addUser ::
-      mode
-        :- "users"
-          Servant.API.:> ReqBody '[JSON] NewUser
-          Servant.API.:> Auth
-                           '[JWT]
-                           AuthedUser
-          Servant.API.:> UVerb
-                           'POST
-                           '[JSON]
-                           '[ WithStatus 200 WebUser
-                            , WithStatus 400 ErrorBody
-                            , WithStatus 409 ErrorBody
-                            , WithStatus 403 ErrorBody
-                            ]
-  , list ::
+  , -- , addUser ::
+    --     mode
+    --       :- "users"
+    --         Servant.API.:> ReqBody '[JSON] NewUser
+    --         Servant.API.:> Auth
+    --                          '[JWT]
+    --                          AuthedUser
+    --         Servant.API.:> UVerb
+    --                          'POST
+    --                          '[JSON]
+    --                          '[ WithStatus 200 WebUser
+    --                           , WithStatus 400 ErrorBody
+    --                           , WithStatus 409 ErrorBody
+    --                           , WithStatus 403 ErrorBody
+    --                           ]
+    list ::
       mode
         :- "users"
           Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser], WithStatus 403 ErrorBody, WithStatus 401 ErrorBody]
-  , get ::
-      mode
-        :- "users"
-          Servant.API.:> Capture
-                           "userId"
-                           WebUserId
-          Servant.API.:> Auth
-                           '[JWT]
-                           AuthedUser
-          Servant.API.:> UVerb
-                           'GET
-                           '[JSON]
-                           '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
-  , sanityCheck ::
+  , -- , get ::
+    --     mode
+    --       :- "users"
+    --         Servant.API.:> Capture
+    --                          "userId"
+    --                          WebUserId
+    --         Servant.API.:> Auth
+    --                          '[JWT]
+    --                          AuthedUser
+    --         Servant.API.:> UVerb
+    --                          'GET
+    --                          '[JSON]
+    --                          '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
+    sanityCheck ::
       mode
         :- "sanityCheck" Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
@@ -142,10 +141,10 @@ rawBusinessServer :: Routes (AsServerT AppEff)
 rawBusinessServer =
   Routes
     { login = login_
-    , addUser = addUser_
-    , list = list_
-    , get = get_
-    , sanityCheck = sanityCheck
+    , -- , addUser = addUser_
+      list = list_
+      -- , get = get_
+      -- , sanityCheck = sanityCheck
     }
   where
     login_ (Creds l p) = do
@@ -162,37 +161,36 @@ rawBusinessServer =
               Right token ->
                 pure $ WithStatus @200 $ TR . decodeUtf8 . BSL.toStrict $ token
 
-    addUser_ (NewUser name) ar = do
-      logMsg "addUser"
-      runUVerbT $ do
-        case ar of
-          Authenticated au -> do
-            unless au.auIsAdmin $ do
-              throwUVerb (Proxy @403) Denied
-            res <- liftEff $ App.UsersE.addUser name
-            case res of
-              Left e@(InvalidUserName _) -> throwUVerb (Proxy @400) e
-              Left e -> throwUVerb (Proxy @400) e
-              Right u -> pure $ WithStatus @200 $ toWebUser u
-          _ -> throwUVerb (Proxy @403) Denied
+    -- addUser_ (NewUser name) ar = do
+    --   logMsg "addUser"
+    --   runUVerbT $ do
+    --     case ar of
+    --       Authenticated au -> do
+    --         unless au.auIsAdmin $ do
+    --           throwUVerb (Proxy @403) Denied
+    --         res <- liftEff $ mapError UserError $ App.UsersE.addUser name
+    --         case res of
+    --           Left e -> throwUVerb (Proxy @400) e
+    --           Right u -> pure $ WithStatus @200 $ toWebUser u
+    --       _ -> throwUVerb (Proxy @403) Denied
 
     list_ = runUVerbT $ do
       liftEff $ logMsg "list"
       users <- liftEff $ getListHandler
       pure $ WithStatus @200 $ toWebUser <$> users
 
-    get_ (WebUserId lookup_uid) ar = do
-      logMsg "getUser"
-      runUVerbT $ do
-        case ar of
-          Authenticated _au -> do
-            res <- liftEff $ getUser $ UserId lookup_uid
-            case res of
-              Right u -> pure $ WithStatus @200 $ toWebUser u
-              Left e -> throwUVerb (Proxy @404) e
-          _ -> throwUVerb (Proxy @403) Denied
-    sanityCheck = do
-      logMsg "sanityCheck"
-      runUVerbT $ do
-        _ <- throwUVerb (Proxy @404) $ UserNotFound $ UserId 0
-        pure $ WithStatus @200 ()
+-- get_ (WebUserId lookup_uid) ar = do
+--   logMsg "getUser"
+--   runUVerbT $ do
+--     case ar of
+--       Authenticated _au -> do
+--         res <- liftEff $ getUser $ UserId lookup_uid
+--         case res of
+--           Right u -> pure $ WithStatus @200 $ toWebUser u
+--           Left e -> throwUVerb (Proxy @404) e
+--       _ -> throwUVerb (Proxy @403) Denied
+-- sanityCheck = do
+--   logMsg "sanityCheck"
+--   runUVerbT $ do
+--     _ <- throwUVerb (Proxy @404) $ UserNotFound $ UserId 0
+--     pure $ WithStatus @200 ()

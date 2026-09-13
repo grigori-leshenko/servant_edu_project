@@ -53,6 +53,7 @@ executable servant-test
   other-modules:
     App.UVerbT
     App.Errors
+    App.ErrorsE
     App.Users
     App.UsersE
     OpenAPI.Orphans
@@ -63,6 +64,7 @@ executable servant-test
     App.Routes
     App.AppEff
     App.Logger
+    App.DBE
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- Other library packages from which modules are imported.
