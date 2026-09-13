@@ -9,7 +9,7 @@ module App.Routes where
 import App.Logger (Logger, logMsg)
 import App.UVerbT
 import App.Users (User (User), UserId (UserId))
-import App.UsersE (Users, getList)
+import App.UsersE (Users, UsersError (UserNotFound), getList)
 
 import Data.Aeson (FromJSON, ToJSON)
 import Data.OpenApi
@@ -143,8 +143,8 @@ rawBusinessServer =
     { login = login_
     , -- , addUser = addUser_
       list = list_
-      -- , get = get_
-      -- , sanityCheck = sanityCheck
+    , -- , get = get_
+      sanityCheck = sanityCheck
     }
   where
     login_ (Creds l p) = do
@@ -179,18 +179,19 @@ rawBusinessServer =
       users <- liftEff $ getListHandler
       pure $ WithStatus @200 $ toWebUser <$> users
 
--- get_ (WebUserId lookup_uid) ar = do
---   logMsg "getUser"
---   runUVerbT $ do
---     case ar of
---       Authenticated _au -> do
---         res <- liftEff $ getUser $ UserId lookup_uid
---         case res of
---           Right u -> pure $ WithStatus @200 $ toWebUser u
---           Left e -> throwUVerb (Proxy @404) e
---       _ -> throwUVerb (Proxy @403) Denied
--- sanityCheck = do
---   logMsg "sanityCheck"
---   runUVerbT $ do
---     _ <- throwUVerb (Proxy @404) $ UserNotFound $ UserId 0
---     pure $ WithStatus @200 ()
+    -- get_ (WebUserId lookup_uid) ar = do
+    --   logMsg "getUser"
+    --   runUVerbT $ do
+    --     case ar of
+    --       Authenticated _au -> do
+    --         res <- liftEff $ getUser $ UserId lookup_uid
+    --         case res of
+    --           Right u -> pure $ WithStatus @200 $ toWebUser u
+    --           Left e -> throwUVerb (Proxy @404) e
+    --       _ -> throwUVerb (Proxy @403) Denied
+
+    sanityCheck = do
+      logMsg "sanityCheck"
+      runUVerbT $ do
+        _ <- throwUVerb (Proxy @404) $ UsersError $ UserNotFound $ UserId 0
+        pure $ WithStatus @200 ()
