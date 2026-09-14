@@ -51,20 +51,19 @@ executable servant-test
   main-is: Main.hs
   -- Modules included in this executable, other than Main.
   other-modules:
-    App.UVerbT
-    App.Errors
-    App.ErrorsE
-    App.Users
-    App.UsersE
+    App.Server.UVerbT
+    App.Domain.Errors
+    App.Domain.ErrorsE
+    App.Domain.Users
+    App.Domain.UsersE
     OpenAPI.Orphans
-    App.AppM
     App.Config
-    App.Server
-    App.ServerE
-    App.Routes
+    App.Server.Server
+    App.Server.ServerE
+    App.Server.Routes
     App.AppEff
-    App.Logger
-    App.DBE
+    App.Infra.Logger
+    App.Domain.DBE
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
   -- Other library packages from which modules are imported.

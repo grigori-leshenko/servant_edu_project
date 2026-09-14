@@ -3,10 +3,10 @@
 module App.AppEff where
 
 import App.Config (AppConfig (..))
-import App.DBE (DBE, DBError)
-import App.Errors
-import App.Logger
-import App.UsersE
+import App.Domain.DBE (DBE, DBError)
+import App.Domain.Errors
+import App.Domain.UsersE
+import App.Infra.Logger
 import Effectful
 import Effectful.Error.Static (Error)
 import Effectful.Reader.Static (Reader)

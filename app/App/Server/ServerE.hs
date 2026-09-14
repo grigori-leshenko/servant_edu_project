@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module App.ServerE where
+module App.Server.ServerE where
 
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)

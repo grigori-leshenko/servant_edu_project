@@ -1,6 +1,6 @@
-module App.Errors (AppError (..)) where
+module App.Domain.Errors (AppError (..)) where
 
-import App.UsersE (UsersError)
+import App.Domain.UsersE (UsersError)
 
 data AppError where
   UsersError :: UsersError -> AppError

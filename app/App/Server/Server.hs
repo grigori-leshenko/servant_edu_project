@@ -4,14 +4,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module App.Server where
+module App.Server.Server where
 
 import App.AppEff (AppEff)
 
 import App.Config
-import App.DBE
-import App.Routes
-import App.UsersE (UsersError, runUsers)
+import App.Domain.DBE
+import App.Domain.UsersE (UsersError, runUsers)
+import App.Server.Routes
 import Control.Exception.Safe (Exception (displayException), SomeException, try, tryAny)
 import Control.Lens ((&), (.~))
 import Control.Monad.Except (ExceptT (..), MonadError (throwError), runExceptT)
@@ -20,8 +20,8 @@ import Control.Monad.Except (ExceptT (..), MonadError (throwError), runExceptT)
 
 -- import App.Errors (AppError (..))
 
-import App.Errors (AppError)
-import App.Logger (runLogger)
+import App.Domain.Errors (AppError)
+import App.Infra.Logger (runLogger)
 import Data.Aeson (encode, object, (.=))
 import Data.IORef (IORef, modifyIORef', readIORef)
 import Data.Map qualified as Map

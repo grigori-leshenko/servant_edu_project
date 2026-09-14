@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module App.Users (UserId (..), User (..)) where
+module App.Domain.Users (UserId (..), User (..)) where
 
 import Data.Aeson
 import GHC.Generics

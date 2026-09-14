@@ -3,13 +3,13 @@
 module Main (main) where
 
 import App.Config
-import App.DBE (DBE, DBError, runBDEIORef)
-import App.Errors (AppError)
-import App.Logger (Logger, logMsg, runLogger)
-import App.Routes (getListHandler)
-import App.Server
-import App.ServerE (Server, runServer, runServerWarp)
-import App.UsersE (Users, UsersError, runUsers)
+import App.Domain.DBE (DBE, DBError, runBDEIORef)
+import App.Domain.Errors (AppError)
+import App.Infra.Logger (Logger, logMsg, runLogger)
+import App.Server.Routes (getListHandler)
+import App.Server.Server
+import App.Server.ServerE (Server, runServer, runServerWarp)
+import App.Domain.UsersE (Users, UsersError, runUsers)
 import Data.IORef (newIORef)
 import Data.Map qualified as Map
 import Effectful

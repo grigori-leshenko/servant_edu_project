@@ -6,7 +6,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module App.Logger where
+module App.Infra.Logger where
 
 import Data.Text (Text)
 import Data.Text qualified (show)

@@ -1,4 +1,4 @@
-module App.ErrorsE where
+module App.Domain.ErrorsE where
 
 import Effectful
 import Effectful.Error.Static (Error, runErrorNoCallStack, throwError)

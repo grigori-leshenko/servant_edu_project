@@ -7,17 +7,17 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module App.UsersE (runUsers, getList, Users, getUser, addUser, UsersError (..)) where
+module App.Domain.UsersE (runUsers, getList, Users, getUser, addUser, UsersError (..)) where
 
-import App.DBE (DBE (..), DBError (NotFound), dBAddUser, dBGetUser, dBGetUsers)
-import App.Users
+import App.Domain.DBE (DBE (..), DBError (NotFound), dBAddUser, dBGetUser, dBGetUsers)
+import App.Domain.Users
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
 import Effectful.Error.Static (Error, throwError)
 
 -- import Effectful.Error.Static (mapError)
 
-import App.ErrorsE (mapError)
+import App.Domain.ErrorsE (mapError)
 import Effectful.TH (makeEffect)
 
 data UsersError where

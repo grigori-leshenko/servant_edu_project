@@ -7,9 +7,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module App.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb, liftEff) where
+module App.Server.UVerbT (UVerbT (..), runUVerbT, ErrorBody (..), throwUVerb, liftEff) where
 
-import App.UsersE (UsersError (..))
+import App.Domain.UsersE (UsersError (..))
 import Control.Monad.Except
 import Control.Monad.Writer.Strict (MonadIO (liftIO), MonadTrans (lift))
 import Data.Aeson
@@ -22,7 +22,7 @@ import Servant (IsMember, Proxy, Union)
 
 -- import Servant.API.Status qualified
 
-import App.Errors
+import App.Domain.Errors
 import Servant.API.Status qualified
 import Servant.API.UVerb (WithStatus (..), inject)
 

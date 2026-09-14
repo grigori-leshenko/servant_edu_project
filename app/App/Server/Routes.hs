@@ -4,16 +4,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module App.Routes where
+module App.Server.Routes where
 
 import App.AppEff (AppEff)
 import App.Config
-import App.Errors (AppError (..))
-import App.ErrorsE (mapError)
-import App.Logger (Logger, logMsg)
-import App.UVerbT
-import App.Users (User (User), UserId (UserId))
-import App.UsersE (Users, UsersError (UserNotFound), addUser, getList, getUser)
+import App.Domain.Errors (AppError (..))
+import App.Domain.ErrorsE (mapError)
+import App.Domain.Users (User (User), UserId (UserId))
+import App.Domain.UsersE (Users, UsersError (UserNotFound), addUser, getList, getUser)
+import App.Infra.Logger (Logger, logMsg)
+import App.Server.UVerbT
 import Control.Monad (unless)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.ByteString.Lazy qualified as BSL
@@ -165,7 +165,7 @@ rawBusinessServer =
               liftEff $
                 runErrorNoCallStack @AppError $
                   mapError UsersError $
-                    App.UsersE.addUser name
+                    App.Domain.UsersE.addUser name
             case res of
               Left e -> throwUVerb (Proxy @400) e
               Right u -> pure $ WithStatus @200 $ toWebUser u

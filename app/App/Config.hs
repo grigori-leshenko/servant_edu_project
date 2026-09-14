@@ -1,6 +1,6 @@
 module App.Config where
 
-import App.Users (User)
+import App.Domain.Users (User)
 import Data.IORef (IORef)
 import Data.Map qualified as Map
 import Data.Text

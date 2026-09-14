@@ -7,9 +7,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module App.DBE where
+module App.Domain.DBE where
 
-import App.Users
+import App.Domain.Users
 import Data.IORef (IORef, readIORef, writeIORef)
 import Effectful
 import Effectful.Dispatch.Dynamic (interpret)
@@ -39,7 +39,7 @@ runBDEIORef ref = interpret $ \_ -> \case
     pure users
   DBGetUser lookup_uid -> do
     users <- liftIO $ readIORef ref
-    case lookup lookup_uid [(App.Users.uid u, u) | u <- users] of
+    case lookup lookup_uid [(App.Domain.Users.uid u, u) | u <- users] of
       Just u -> pure u
       Nothing -> throwError $ NotFound $ lookup_uid
   DBAddUser name -> do
