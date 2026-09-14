@@ -33,7 +33,7 @@ import Network.HTTP.Types
   ( StdMethod (GET, POST)
   )
 import OpenAPI.Orphans ()
-import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..), Proxy (Proxy))
+import Servant (Proxy (Proxy))
 import Servant.API (Capture, FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.Auth.Server
@@ -57,14 +57,6 @@ findUser :: Text -> Text -> Maybe AuthedUser
 findUser "admin" "1122" = Just $ AU "admin" True
 findUser "viewer" "1111" = Just $ AU "viewer" False
 findUser _ _ = Nothing
-
-_authCheck :: BasicAuthCheck AuthedUser
-_authCheck = BasicAuthCheck auCheck
-  where
-    auCheck :: BasicAuthData -> IO (BasicAuthResult AuthedUser)
-    auCheck (BasicAuthData "admin" "1122") = pure $ Authorized $ AU "admin" True
-    auCheck (BasicAuthData "viewer" "ro") = pure $ Authorized $ AU "viever" False
-    auCheck _ = pure Unauthorized
 
 newtype WebUserId = WebUserId {unWeb :: Int}
   deriving (Show, Generic)
