@@ -6,34 +6,35 @@
 
 module App.Routes where
 
+import App.AppEff (AppEff)
+import App.Config
+import App.Errors (AppError (..))
+import App.ErrorsE (mapError)
 import App.Logger (Logger, logMsg)
 import App.UVerbT
 import App.Users (User (User), UserId (UserId))
-import App.UsersE (Users, UsersError (UserNotFound), getList)
-
+import App.UsersE (Users, UsersError (UserNotFound), addUser, getList, getUser)
+import Control.Monad (unless)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.ByteString.Lazy qualified as BSL
 import Data.OpenApi
   ( ToParamSchema
   , ToSchema
   )
 import Data.Text (Text, pack)
 import Data.Text qualified as Text
+import Data.Text.Encoding (decodeUtf8)
+import Data.Time (addUTCTime, getCurrentTime)
+import Effectful (Eff, MonadIO (liftIO), type (:>))
+import Effectful.Error.Static (runErrorNoCallStack)
+import Effectful.Reader.Static (asks)
 import GHC.Generics (Generic)
 import Network.HTTP.Types
   ( StdMethod (GET, POST)
   )
 import OpenAPI.Orphans ()
-
-import App.AppEff (AppEff)
-import App.Config
-import App.Errors (AppError (..))
-import Data.ByteString.Lazy qualified as BSL
-import Data.Text.Encoding (decodeUtf8)
-import Data.Time (addUTCTime, getCurrentTime)
-import Effectful (Eff, MonadIO (liftIO), type (:>))
-import Effectful.Reader.Static (asks)
 import Servant (BasicAuthCheck (BasicAuthCheck), BasicAuthResult (..), Proxy (Proxy))
-import Servant.API (FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
+import Servant.API (Capture, FromHttpApiData (parseUrlPiece), JSON, ReqBody, (:-), (:>))
 import Servant.API.UVerb (UVerb, WithStatus (..))
 import Servant.Auth.Server
 import Servant.Server.Generic (AsServerT)
@@ -93,39 +94,39 @@ data Routes mode = Routes
                            'POST
                            '[JSON]
                            '[WithStatus 200 TokenResponse, WithStatus 401 ErrorBody, WithStatus 403 ErrorBody]
-  , -- , addUser ::
-    --     mode
-    --       :- "users"
-    --         Servant.API.:> ReqBody '[JSON] NewUser
-    --         Servant.API.:> Auth
-    --                          '[JWT]
-    --                          AuthedUser
-    --         Servant.API.:> UVerb
-    --                          'POST
-    --                          '[JSON]
-    --                          '[ WithStatus 200 WebUser
-    --                           , WithStatus 400 ErrorBody
-    --                           , WithStatus 409 ErrorBody
-    --                           , WithStatus 403 ErrorBody
-    --                           ]
-    list ::
+  , addUser ::
+      mode
+        :- "users"
+          Servant.API.:> ReqBody '[JSON] NewUser
+          Servant.API.:> Auth
+                           '[JWT]
+                           AuthedUser
+          Servant.API.:> UVerb
+                           'POST
+                           '[JSON]
+                           '[ WithStatus 200 WebUser
+                            , WithStatus 400 ErrorBody
+                            , WithStatus 409 ErrorBody
+                            , WithStatus 403 ErrorBody
+                            ]
+  , list ::
       mode
         :- "users"
           Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 [WebUser], WithStatus 403 ErrorBody, WithStatus 401 ErrorBody]
-  , -- , get ::
-    --     mode
-    --       :- "users"
-    --         Servant.API.:> Capture
-    --                          "userId"
-    --                          WebUserId
-    --         Servant.API.:> Auth
-    --                          '[JWT]
-    --                          AuthedUser
-    --         Servant.API.:> UVerb
-    --                          'GET
-    --                          '[JSON]
-    --                          '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
-    sanityCheck ::
+  , get ::
+      mode
+        :- "users"
+          Servant.API.:> Capture
+                           "userId"
+                           WebUserId
+          Servant.API.:> Auth
+                           '[JWT]
+                           AuthedUser
+          Servant.API.:> UVerb
+                           'GET
+                           '[JSON]
+                           '[WithStatus 200 WebUser, WithStatus 404 ErrorBody, WithStatus 403 ErrorBody]
+  , sanityCheck ::
       mode
         :- "sanityCheck" Servant.API.:> UVerb 'GET '[JSON] '[WithStatus 200 (), WithStatus 404 ErrorBody]
   }
@@ -141,10 +142,10 @@ rawBusinessServer :: Routes (AsServerT AppEff)
 rawBusinessServer =
   Routes
     { login = login_
-    , -- , addUser = addUser_
-      list = list_
-    , -- , get = get_
-      sanityCheck = sanityCheck
+    , addUser = addUser_
+    , list = list_
+    , get = get_
+    , sanityCheck = sanityCheck
     }
   where
     login_ (Creds l p) = do
@@ -161,34 +162,43 @@ rawBusinessServer =
               Right token ->
                 pure $ WithStatus @200 $ TR . decodeUtf8 . BSL.toStrict $ token
 
-    -- addUser_ (NewUser name) ar = do
-    --   logMsg "addUser"
-    --   runUVerbT $ do
-    --     case ar of
-    --       Authenticated au -> do
-    --         unless au.auIsAdmin $ do
-    --           throwUVerb (Proxy @403) Denied
-    --         res <- liftEff $ mapError UserError $ App.UsersE.addUser name
-    --         case res of
-    --           Left e -> throwUVerb (Proxy @400) e
-    --           Right u -> pure $ WithStatus @200 $ toWebUser u
-    --       _ -> throwUVerb (Proxy @403) Denied
+    addUser_ (NewUser name) ar = do
+      logMsg "addUser"
+      runUVerbT $ do
+        case ar of
+          Authenticated au -> do
+            unless au.auIsAdmin $ do
+              throwUVerb (Proxy @403) Denied
+            res <-
+              liftEff $
+                runErrorNoCallStack @AppError $
+                  mapError UsersError $
+                    App.UsersE.addUser name
+            case res of
+              Left e -> throwUVerb (Proxy @400) e
+              Right u -> pure $ WithStatus @200 $ toWebUser u
+          _ -> throwUVerb (Proxy @403) Denied
 
     list_ = runUVerbT $ do
       liftEff $ logMsg "list"
       users <- liftEff $ getListHandler
       pure $ WithStatus @200 $ toWebUser <$> users
 
-    -- get_ (WebUserId lookup_uid) ar = do
-    --   logMsg "getUser"
-    --   runUVerbT $ do
-    --     case ar of
-    --       Authenticated _au -> do
-    --         res <- liftEff $ getUser $ UserId lookup_uid
-    --         case res of
-    --           Right u -> pure $ WithStatus @200 $ toWebUser u
-    --           Left e -> throwUVerb (Proxy @404) e
-    --       _ -> throwUVerb (Proxy @403) Denied
+    get_ (WebUserId lookup_uid) ar = do
+      logMsg "getUser"
+      runUVerbT $ do
+        case ar of
+          Authenticated _au -> do
+            res <-
+              liftEff $
+                runErrorNoCallStack @AppError $
+                  mapError UsersError $
+                    getUser $
+                      UserId lookup_uid
+            case res of
+              Right u -> pure $ WithStatus @200 $ toWebUser u
+              Left e -> throwUVerb (Proxy @404) $ e
+          _ -> throwUVerb (Proxy @403) Denied
 
     sanityCheck = do
       logMsg "sanityCheck"
