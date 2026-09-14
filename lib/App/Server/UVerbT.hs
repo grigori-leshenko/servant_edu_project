@@ -23,7 +23,7 @@ import Servant (IsMember, Proxy, Union)
 -- import Servant.API.Status qualified
 
 import App.Domain.Errors
-import Servant.API.Status qualified
+import Servant.API.Status
 import Servant.API.UVerb (WithStatus (..), inject)
 
 newtype UVerbT xs es a = UVerbT {unUVerbT :: ExceptT (Union xs) (Eff es) a}
